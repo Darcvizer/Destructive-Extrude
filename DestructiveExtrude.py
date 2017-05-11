@@ -329,6 +329,18 @@ def Setup(self, context):
 
 	return ver
 
+def StarPosMouse(self, context, event):
+	scene = context.scene
+	region = context.region
+	rv3d = context.region_data
+	coord = event.mouse_region_x, event.mouse_region_y
+	view_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+	loc = view3d_utils.region_2d_to_location_3d(region, rv3d, coord, view_vector)
+
+	normal = self.var[2].data.polygons[0].normal
+	loc = ((normal * -1) * loc)
+	return loc
+
 def SwitchMesh(context,var):
 	"""Switch in a object boolean source a mesh"""
 	if var[1].modifiers['Solidify'].thickness < 0.0:
@@ -366,7 +378,7 @@ def EventMouse(self, context, event, obj):
 	loc = view3d_utils.region_2d_to_location_3d(region, rv3d, coord, view_vector)
 
 	normal = obj[2].data.polygons[0].normal
-	loc = (normal * -1) * loc
+	loc = ((normal * -1) * loc) - self.start_mouse
 
 
 
@@ -632,7 +644,7 @@ class DestructiveExtrude(bpy.types.Operator):
 
 			self.enter = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '+', '*', '/', '.', ',']
 
-
+			self.start_mouse = StarPosMouse(self, context, event)
 
 
 			args = (self, context)
