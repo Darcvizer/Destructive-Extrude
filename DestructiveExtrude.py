@@ -15,7 +15,7 @@ bl_info = {
 	"location": "View3D > Add > Mesh > Destructive Extrude,",
 	"description": "Extrude how SketchUp.",
 	"author": "Vladislav Kindushov",
-	"version": (0, 8),
+	"version": (0, 8, 9),
 	"blender": (2, 7, 8),
 	"category": "Mesh",
 }
@@ -376,14 +376,20 @@ def EventMouse(self, context, event, obj):
 	coord = event.mouse_region_x, event.mouse_region_y
 	view_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
 	loc = view3d_utils.region_2d_to_location_3d(region, rv3d, coord, view_vector)
-
+	print('sisisissisisisisis',loc)
+	print('p3ipiipipipipipipipi' , self.var[0].scale)
 	normal = obj[2].data.polygons[0].normal
-	loc = ((normal * -1) * loc) - self.start_mouse
+	#loc = (loc / self.var[0].scale) * (normal * -1) - self.start_mouse
+	print('asdfsadfsadf',loc)
+	area= Zoom(self, context)
+	print ('area = ', area)
+	loc = (((normal * -1) * loc ) - self.start_mouse) / area
+
+	loc *= 4
 
 
-
-	obj[1].modifiers['Solidify'].thickness = loc
-	obj[2].modifiers['Solidify'].thickness = loc
+	self.var[1].modifiers['Solidiftny'].thickness = loc
+	self.var[2].modifiers['Solidify'].thickness = loc
 
 	SwitchMesh(context, obj)
 
@@ -443,8 +449,13 @@ def EventCtrl(self, context,event, var):
 	bpy.context.scene.objects.unlink(obj)
 	bpy.data.objects.remove(obj)
 
-	var[2].modifiers['Solidify'].thickness = lenn
-	var[1].modifiers['Solidify'].thickness = lenn
+	for i in var[0].modifiers:
+			if i.show_viewport == True and i.type == 'BOOLEAN':
+				if i.object == var[2]:
+
+					var[2].modifiers['Solidify'].thickness = lenn*-1
+				else:
+					var[1].modifiers['Solidify'].thickness = lenn
 
 	SwitchMesh(context, var)
 
@@ -537,6 +548,15 @@ def Cansl(self, context):
 			i.show_viewport = True
 
 	bpy.ops.object.mode_set(mode='EDIT')
+
+def Zoom(self, context):
+	ar = None
+	for i in bpy.context.window.screen.areas:
+		if i.type=='VIEW_3D': ar = i
+
+	ar = ar.spaces[0].region_3d.view_distance
+	print(ar)
+	return ar
 
 
 #--------------------------------------------------------------------------------#
