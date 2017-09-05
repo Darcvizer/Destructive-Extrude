@@ -376,19 +376,19 @@ def EventMouse(self, context, event, obj):
 	coord = event.mouse_region_x, event.mouse_region_y
 	view_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
 	loc = view3d_utils.region_2d_to_location_3d(region, rv3d, coord, view_vector)
-	print('sisisissisisisisis',loc)
-	print('p3ipiipipipipipipipi' , self.var[0].scale)
+	#print('sisisissisisisisis',loc)
+	#print('p3ipiipipipipipipipi' , self.var[0].scale)
 	normal = obj[2].data.polygons[0].normal
 	#loc = (loc / self.var[0].scale) * (normal * -1) - self.start_mouse
-	print('asdfsadfsadf',loc)
+	#print('asdfsadfsadf',loc)
 	area= Zoom(self, context)
-	print ('area = ', area)
+	#print ('area = ', area)
 	loc = (((normal * -1) * loc ) - self.start_mouse) / area
 
 	loc *= 4
 
 
-	self.var[1].modifiers['Solidiftny'].thickness = loc
+	self.var[1].modifiers['Solidify'].thickness = loc
 	self.var[2].modifiers['Solidify'].thickness = loc
 
 	SwitchMesh(context, obj)
