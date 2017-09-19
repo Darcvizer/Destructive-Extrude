@@ -1,7 +1,4 @@
-#
-# NOT USE IN WORK, ONLY TEST
-#
-#
+# ?????? ?????????
 import bpy
 import bmesh
 from math import degrees
@@ -496,7 +493,6 @@ def EventMouse(self, context, event, obj):
     if self.temp_key:
         self.key = str(loc)
 
-
 def EventCtrl(self, context, event, var):
     try:
         RayCast(self, context, event)
@@ -603,9 +599,11 @@ def Finish(self, context, f=False):
 
     bpy.context.scene.objects.unlink(self.var[1])
     bpy.data.objects.remove(self.var[1])
-    bpy.context.scene.objects.unlink(self.var[2])
-    bpy.data.objects.remove(self.var[2])
-
+    try:
+        bpy.context.scene.objects.unlink(self.var[2])
+        bpy.data.objects.remove(self.var[2])
+    except:
+        pass
     for i in self.var[0].modifiers:
         if i in self.var[3]:
             i.show_viewport = True
@@ -630,10 +628,13 @@ def Cansl(self, context):
     bpy.data.objects[self.var[0].name].show_wire = self.show_wire
     bpy.data.objects[self.var[0].name].show_all_edges = self.show_all_edges
 
-    # bpy.context.scene.objects.unlink(self.var[1])
-    # bpy.data.objects.remove(self.var[1])
-    # bpy.context.scene.objects.unlink(self.var[2])
-    # bpy.data.objects.remove(self.var[2])
+    bpy.context.scene.objects.unlink(self.var[1])
+    bpy.data.objects.remove(self.var[1])
+    try:
+        bpy.context.scene.objects.unlink(self.var[2])
+        bpy.data.objects.remove(self.var[2])
+    except:
+        pass
 
     for i in self.var[0].modifiers:
         if i in self.var[3]:
@@ -915,6 +916,7 @@ class DestructiveExtrude(bpy.types.Operator):
 
             if event.type == 'X':
                 if event.type == 'LEFTMOUSE':
+                    Finish(self, context)
                     return {'FINISHED'}
 
                 #if self.X == False:
@@ -938,6 +940,7 @@ class DestructiveExtrude(bpy.types.Operator):
 
             if event.type == 'Y':# or self.Y == 'y':
                 if event.type == 'LEFTMOUSE':
+                    Finish(self, context)
                     return {'FINISHED'}
 
                 #if self.Y == False:
@@ -961,6 +964,7 @@ class DestructiveExtrude(bpy.types.Operator):
 
             if event.type == 'Z':# or self.Z == 'z':
                 if event.type == 'LEFTMOUSE':
+                    Finish(self, context)
                     return {'FINISHED'}
 
 
@@ -984,6 +988,7 @@ class DestructiveExtrude(bpy.types.Operator):
 
             if (self.X == 'x' or self.Y == 'y' or self.Z == 'z'):
                 if event.type == 'LEFTMOUSE':
+                    Finish(self, context)
                     return {'FINISHED'}
 
                 if self.Z == 'z':
