@@ -787,7 +787,7 @@ class DestructiveExtrude(bpy.types.Operator):
     modOffset = False
     Normal = None
     saveCoord = []
-    matrix = bpy.context.active_object.matrix_world.copy()
+    #matrix = bpy.context.active_object.matrix_world.copy()
     @classmethod
     def poll(cls, context):
         return (context.mode == "EDIT_MESH")  # and (context.tool_settings.mesh_select_mode == (False, False, True))
