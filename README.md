@@ -1,6 +1,6 @@
 # Destructive-Extrude
 
-![](https://i.imgur.com/aYJ3MkS.gifv)
+![](https://blenderartists.org/forum/attachment.php?attachmentid=473292&d=1487782037&thumb=1)
 
 Это Etrude для Blender который удаляет пересикающию геометрию или наоборот спаивает. Инструмент работает анолагично Push/Pull в SketchUP.
 
