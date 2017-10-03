@@ -1,4 +1,4 @@
-https://pandao.github.io/editor.md/en.html
+
 # Destructive-Extrude
 
 
@@ -6,8 +6,8 @@ https://pandao.github.io/editor.md/en.html
 
 This is an Extrude for Blender, which deletes the crossing geometry or vice versa solders it. The tool works analogically to Push/Pull in SketchUP.
 
-[![Everything Is AWESOME] (https://i.imgur.com/oRCO82T.png)](https://www.youtube.com/watch?v=73znxyuKxLM")
-# The add on is in beta version, so there may be some problems with it.
+[![Everything Is AWESOME](https://i.imgur.com/oRCO82T.png)](https://www.youtube.com/watch?v=73znxyuKxLM")
+### The add on is in beta version, so there may be some problems with it.
 # Features!
 
 1) The main mode is Face Etrtude Along Normal.
