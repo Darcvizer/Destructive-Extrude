@@ -21,10 +21,7 @@ The tool can be found on the lest bar with the other Extrude tools.
 
 
 
-
-
-
-#РУССКИЙ
+# РУССКИЙ
 
 # Destructive-Extrude
 
