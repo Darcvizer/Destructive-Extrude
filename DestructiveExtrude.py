@@ -677,6 +677,11 @@ class DestructiveExtrude(bpy.types.Operator):
 
         context.area.header_text_set(draw(self, context, event, self.d_obj.S_val))
 
+        if event.type == 'LEFTMOUSE':
+            self.v3d.Finish(context, self.m_obj.index_bool_modifier, self.m_obj.m_Obj, self.d_obj.d_obj)
+            print('super sisi')
+            return {'FINISHED'}
+
         if event.type == 'Q':
             return {'FINISHED'}
 
@@ -684,10 +689,7 @@ class DestructiveExtrude(bpy.types.Operator):
             self.d_obj.Move(context, event, self.v3d.EventMouseNormal(context, event, self.d_obj.d_obj, mode=self.axis),self.m_obj.index_bool_modifier, axis=self.axis, snap=True)
             return {'RUNNING_MODAL'}
 
-        if event.type == 'LEFTMOUSE':
-            self.v3d.Finish(context, self.m_obj.index_bool_modifier, self.m_obj.m_Obj, self.d_obj.d_obj)
-            print('super sisi')
-            return {'FINISHED'}
+
 
         if event.type == 'RIFGTMOUSE':
             self.v3d.Cancel(context, self.m_obj.index_bool_modifier, self.m_obj.m_Obj, self.d_obj.d_obj)
