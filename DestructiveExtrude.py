@@ -199,7 +199,7 @@ class M_Object:
         bm = bmesh.from_edit_mesh(self.m_Obj.data)
         face_selection = [f for f in bm.faces if f.select]
         save_pos = {}
-        distance = 0.2#0.00002
+        distance = 0.00002
         coordNof = []
         coordWof = []
         for i in bm.verts:
