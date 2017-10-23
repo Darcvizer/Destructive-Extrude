@@ -748,3 +748,4 @@ def unregister():
     bpy.types.VIEW3D_MT_edit_mesh_extrude.remove(operator_draw)
 
 if __name__ == "__main__":
+    register()
