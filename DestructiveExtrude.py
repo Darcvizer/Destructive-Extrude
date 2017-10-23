@@ -199,7 +199,7 @@ class M_Object:
         bm = bmesh.from_edit_mesh(self.m_Obj.data)
         face_selection = [f for f in bm.faces if f.select]
         save_pos = {}
-        distance = 0.00002
+        distance = 0.002
         coordNof = []
         coordWof = []
         for i in bm.verts:
@@ -210,6 +210,8 @@ class M_Object:
 
         for i in face_selection:
             for edge in i.edges:
+                if edge.link_faces[0] and edge.link_faces[1]:
+                    continue
                 try:  # ____Fix opening edges
                     angle = abs(degrees(edge.calc_face_angle_signed()))
                     nor = [i.normal for i in edge.link_faces if not i.select]
@@ -217,7 +219,19 @@ class M_Object:
                     continue
 
                 if angle > 29.999:  # ____Fix
+                    if angle > 90.0005:
+                        n = nor[0] + i.normal
+                        for v in edge.verts:
+                            if isinstance(move.get(v.index), type(None)):
+                                v.co += n * distance
+                                move[v.index] = nor
+
+                            if move.get(v.index) != nor:
+                                v.co += n * distance
+                                move[v.index] = nor
+
                     for v in edge.verts:
+                        print(angle)
                         if isinstance(move.get(v.index), type(None)):
                             v.co += nor[0] * distance
                             move[v.index] = nor
@@ -294,6 +308,7 @@ class D_Object:
 
         self.d_obj.modifiers.new('Solidify', 'SOLIDIFY')
         self.d_obj.modifiers[0].use_even_offset = True
+        self.d_obj.modifiers[0].use_quality_normals = True
         self.d_obj.modifiers[0].thickness = 0.1
         #self.d_obj.modifiers[0].use_flip_normals = True
 
@@ -301,7 +316,7 @@ class D_Object:
         joint_normal = Vector((0.0,0.0,0.0))
         for i in self.d_obj.data.polygons:
             joint_normal += i.normal.copy()
-        print(joint_normal)
+        #print(joint_normal)
         return joint_normal
 
     def SetValSolidifity(self, context, value, bool, snap=False, SV=None):
@@ -348,7 +363,7 @@ class D_Object:
             if i.index not in vert:
                 self.vertx_for_move.append(i.index)
         for x in self.vertx_for_move[1:]:
-            self.i_For_Comp_Axis.append((self.d_obj.data.vertices[x].co.copy() - self.d_obj.data.vertices[self.vertx_for_move[0]].co.copy()))
+            self.i_For_Comp_Axis.append((self.d_obj.data.vertices[x].co.copy()) - self.d_obj.data.vertices[self.vertx_for_move[0]].co.copy())
         for x in self.vertx_for_move:
             self.i_For_Comp_Axis2.append((self.d_obj.data.vertices[x].co.copy() - self.d_obj.data.vertices[self.vertx_for_move[0]].co.copy()))
 
@@ -393,14 +408,16 @@ class D_Object:
             self.__ReturnCoord(context)
         for j, i in enumerate(self.vertx_for_move):
             if i == self.vertx_for_move[0]:
+                v = self.d_obj.matrix_world * loc
                 self.d_obj.data.vertices[i].co[axis] = loc[axis]
             else:
                 x = self.i_For_Comp_Axis[j-1]
+                v = self.d_obj.matrix_world *  loc
                 self.d_obj.data.vertices[i].co[axis] = loc[axis] + x[axis]
         self.__SwapBool(context, bool, axis, loc)
 
     def __SwapBool(self, context, bool, axis, loc):
-        if self.Normal[2] > 0.0:
+        def P_Norm(self, context, bool, axis, loc):
             if loc[axis] < self.save_Coord[0][axis]:
                 if context.active_object.modifiers[bool].operation == 'UNION':
                     context.active_object.modifiers[bool].operation = 'DIFFERENCE'
@@ -415,7 +432,7 @@ class D_Object:
                     self.__SwapCoordinate(context, self.n_offset)
                     for i in self.d_obj.data.polygons:
                         i.flip()
-        else:
+        def N_Norm(self, context, bool, axis, loc):
             if loc[axis] > self.save_Coord[0][axis]:
                 if context.active_object.modifiers[bool].operation == 'UNION':
                     context.active_object.modifiers[bool].operation = 'DIFFERENCE'
@@ -430,6 +447,10 @@ class D_Object:
                     self.__SwapCoordinate(context, self.n_offset)
                     for i in self.d_obj.data.polygons:
                         i.flip()
+        if self.Normal[axis] > 0.0:
+           P_Norm(self, context, bool, axis, loc)
+        else:
+            N_Norm(self, context, bool, axis, loc)
 
     def __KDTree(self, mesh):
         size = len(mesh.vertices)
@@ -500,7 +521,7 @@ class D_Object:
 
 class Util:
     def __init__(self, context, event, obj, modifer):
-        self.starMousePos = self.__StarPosMouse(context, event, obj)
+        self.starMousePos = self.__StarPosMouse(context, event, obj) + 0.001
         self.starMousePosForAxis = False
         self.modifier = modifer
         self.auto_snap = bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge
@@ -519,8 +540,8 @@ class Util:
         view_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
         loc = view3d_utils.region_2d_to_location_3d(region, rv3d, coord, view_vector)
         if type(mode) != int:
-            normal = obj.data.polygons[0].normal
-            loc = ((normal * -1) * loc)
+            normal =obj.matrix_local * obj.data.polygons[0].normal
+            loc = ((normal * -1) * (obj.matrix_local * loc))
             return loc
         elif mode:
             return loc
@@ -533,8 +554,8 @@ class Util:
         view_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
         loc = view3d_utils.region_2d_to_location_3d(region, rv3d, coord, view_vector)
         if type(mode) != int:
-            normal = obj.data.polygons[0].normal.copy()
-            loc = ((((normal * -1) * loc) - self.starMousePos) / self.Zoom(context))
+            normal =obj.matrix_local * obj.data.polygons[0].normal
+            loc = ((((normal * -1) * (obj.matrix_local * loc)) - self.starMousePos) / self.Zoom(context))
             loc *= 4
             return loc
         elif not self.starMousePosForAxis:
@@ -680,9 +701,11 @@ class DestructiveExtrude(bpy.types.Operator):
         if event.type == 'LEFTMOUSE':
             self.v3d.Finish(context, self.m_obj.index_bool_modifier, self.m_obj.m_Obj, self.d_obj.d_obj)
             print('super sisi')
+            context.area.header_text_set()
             return {'FINISHED'}
 
         if event.type == 'Q':
+            context.area.header_text_set()
             return {'FINISHED'}
 
         if event.ctrl:
@@ -693,11 +716,13 @@ class DestructiveExtrude(bpy.types.Operator):
 
         if event.type == 'RIFGTMOUSE':
             self.v3d.Cancel(context, self.m_obj.index_bool_modifier, self.m_obj.m_Obj, self.d_obj.d_obj)
+            context.area.header_text_set()
             return {'FINISHED'}
 
 
         if event.type == 'SPACE':
             self.v3d.Finish(context, self.m_obj.index_bool_modifier, self.m_obj.m_Obj, self.d_obj.d_obj, bevel=True)
+            context.area.header_text_set()
 
 
         if event.type == 'X':
@@ -713,6 +738,8 @@ class DestructiveExtrude(bpy.types.Operator):
             self.d_obj.Move(context, event,
             self.v3d.EventMouseNormal(context, event, self.d_obj.d_obj, mode=self.axis, axis=self.axis),
             self.m_obj.index_bool_modifier, axis=self.axis, snap=False)
+
+        
 
 
 
