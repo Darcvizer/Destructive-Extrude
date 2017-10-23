@@ -734,9 +734,17 @@ class DestructiveExtrude(bpy.types.Operator):
             self.report({'WARNING'}, "is't 3dview")
             return {'CANCELLED'}
 
+def operator_draw(self, context):
+    layout = self.layout
+    col = layout.column(align=True)
+    self.layout.operator_context = 'INVOKE_REGION_WIN'
+    col.operator("mesh.destructive_extrude", text="Destructive Extrude")
 def register():
     bpy.utils.register_class(DestructiveExtrude)
+    bpy.types.VIEW3D_MT_edit_mesh_extrude.append(operator_draw)
+
 def unregister():
     bpy.utils.unregister_class(DestructiveExtrude)
+    bpy.types.VIEW3D_MT_edit_mesh_extrude.remove(operator_draw)
+
 if __name__ == "__main__":
-    register()
