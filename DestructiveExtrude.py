@@ -402,16 +402,16 @@ class D_Object:
     def __SwapBool(self, context, bool, axis, loc):
         if self.Normal[2] > 0.0:
             if loc[axis] < self.save_Coord[0][axis]:
-                if context.active_object.modifiers[bool].operation == 'DIFFERENCE':
-                    context.active_object.modifiers[bool].operation = 'UNION'
+                if context.active_object.modifiers[bool].operation == 'UNION':
+                    context.active_object.modifiers[bool].operation = 'DIFFERENCE'
                     self.__SwapCoordinate(context, self.w_offset)
                     for i in self.d_obj.data.polygons:
                         i.flip()
 
 
             else:
-                if context.active_object.modifiers[bool].operation == 'UNION':
-                    context.active_object.modifiers[bool].operation = 'DIFFERENCE'
+                if context.active_object.modifiers[bool].operation == 'DIFFERENCE':
+                    context.active_object.modifiers[bool].operation = 'UNION'
                     self.__SwapCoordinate(context, self.n_offset)
                     for i in self.d_obj.data.polygons:
                         i.flip()
