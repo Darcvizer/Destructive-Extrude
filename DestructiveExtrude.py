@@ -199,7 +199,8 @@ class M_Object:
         bm = bmesh.from_edit_mesh(self.m_Obj.data)
         face_selection = [f for f in bm.faces if f.select]
         save_pos = {}
-        distance = 0.002
+        distance = 0.000002
+        #distance = 0.2
         coordNof = []
         coordWof = []
         for i in bm.verts:
@@ -210,16 +211,17 @@ class M_Object:
 
         for i in face_selection:
             for edge in i.edges:
-                if edge.link_faces[0] and edge.link_faces[1]:
+                if edge.link_faces[0].select and edge.link_faces[1].select:
                     continue
                 try:  # ____Fix opening edges
-                    angle = abs(degrees(edge.calc_face_angle_signed()))
+                    angle = degrees(edge.calc_face_angle_signed())
                     nor = [i.normal for i in edge.link_faces if not i.select]
                 except:
                     continue
 
                 if angle > 29.999:  # ____Fix
-                    if angle > 90.0005:
+                    if angle > 90.001:
+                        print(angle)
                         n = nor[0] + i.normal
                         for v in edge.verts:
                             if isinstance(move.get(v.index), type(None)):
@@ -235,6 +237,7 @@ class M_Object:
                         if isinstance(move.get(v.index), type(None)):
                             v.co += nor[0] * distance
                             move[v.index] = nor
+
 
                         if move.get(v.index) != nor:
                             v.co += nor[0] * distance
@@ -258,6 +261,7 @@ class D_Object:
     def __init__(self, context, n_offset, w_offset):
         # Use in normal move
         self.d_obj = context.selected_objects[0] # extrude object
+        self.__Apply_transform(context)
         self.i_offset = [] # index offset vertex
         self.n_offset = n_offset # coordinate with not offset
         self.w_offset = w_offset # coordinate with offset
@@ -266,6 +270,7 @@ class D_Object:
         # Use in axis mode
         self.Normal = self.__GetNormal(context) # normal the first face for detect side offset
         self.vertx_for_move = [] # these vertices will move
+
         self.i_For_Comp_Axis = [] # these vertices responsible for maintaining proportions
         self.save_Coord = [] # save coordinate for change axis
         self.constrain_axis = False # Looks after whether or not to prepare the object for movement along the axis
@@ -283,6 +288,15 @@ class D_Object:
         self.__GetIndexForOffset(context)
         self.__CreateSolidifityModifier(context)
 
+    def __Apply_transform(self, context):
+        s = context.selected_objects
+        bpy.ops.object.select_all(action='DESELECT')
+        self.d_obj.select = True
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+        for i in s:
+            bpy.data.objects[i.name].select = True
+
+
     def __GetIndexForOffset(self, context):
         '''get vertex index for offset'''
         tempN = []
@@ -290,8 +304,8 @@ class D_Object:
         for i in self.d_obj.data.vertices:
                 for j, o in enumerate(self.n_offset):
                     if o == i.co:
-                        tempN.append(self.n_offset[j])
-                        tempW.append(self.w_offset[j])
+                        tempN.append(context.active_object.matrix_world * self.n_offset[j])
+                        tempW.append(context.active_object.matrix_world * self.w_offset[j])
                         self.i_offset.append(i.index)
         self.n_offset = tempN
         self.w_offset = tempW
@@ -359,6 +373,7 @@ class D_Object:
 
         self.d_obj.modifiers[0].thickness = 0
         bpy.ops.object.modifier_apply(modifier=self.d_obj.modifiers[0].name)
+        
         for i in self.d_obj.data.vertices:
             if i.index not in vert:
                 self.vertx_for_move.append(i.index)
@@ -408,11 +423,9 @@ class D_Object:
             self.__ReturnCoord(context)
         for j, i in enumerate(self.vertx_for_move):
             if i == self.vertx_for_move[0]:
-                v = self.d_obj.matrix_world * loc
                 self.d_obj.data.vertices[i].co[axis] = loc[axis]
             else:
                 x = self.i_For_Comp_Axis[j-1]
-                v = self.d_obj.matrix_world *  loc
                 self.d_obj.data.vertices[i].co[axis] = loc[axis] + x[axis]
         self.__SwapBool(context, bool, axis, loc)
 
