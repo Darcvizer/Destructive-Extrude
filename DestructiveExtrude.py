@@ -760,6 +760,7 @@ class DestructiveExtrude(bpy.types.Operator):
 
     def invoke(self, context, event):
         if context.space_data.type == 'VIEW_3D':
+            s = bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge = False
             self.m_obj = M_Object(context)
             self.d_obj = D_Object(context, self.m_obj.n_offset, self.m_obj.w_offset)
             self.v3d = Util(context, event, self.d_obj.d_obj, self.m_obj.u_modifier)
