@@ -301,19 +301,32 @@ class D_Object:
         '''get vertex index for offset'''
         tempN = []
         tempW = []
+        print('act - obj - ', context.active_object.name)
         for i in self.d_obj.data.vertices:
                 for j, o in enumerate(self.n_offset):
-                    if o == i.co:
+                    if context.active_object.matrix_world * o == context.active_object.matrix_world *i.co:
                         tempN.append(context.active_object.matrix_world * self.n_offset[j])
                         tempW.append(context.active_object.matrix_world * self.w_offset[j])
                         self.i_offset.append(i.index)
-        self.n_offset = tempN
-        self.w_offset = tempW
+        self.n_offset = []
+        self.w_offset = []
+        self.n_offset = [self.d_obj.matrix_local * i for i in tempN]
+        self.w_offset = [self.d_obj.matrix_local * i for i in tempW]
+        # tempN = []
+        # tempW = []
+        # for i in self.d_obj.data.vertices:
+        #         for j, o in enumerate(self.n_offset):
+        #             if o == i.co:
+        #                 tempN.append(context.active_object.matrix_world * self.n_offset[j])
+        #                 tempW.append(context.active_object.matrix_world * self.w_offset[j])
+        #                 self.i_offset.append(i.index)
+        # self.n_offset = tempN
+        # self.w_offset = tempW
 
     def __GetIndexForOffsetSolidify(self, context):
         for i in self.i_offset:
             for j in self.d_obj.data.vertices:
-                if self.d_obj.data.vertices[i].co == j.co and j.index != i:
+                if context.active_object.matrix_world * self.d_obj.data.vertices[i].co == context.active_object.matrix_world *j.co.copy() and j.index != i:
                     self.i_offset2.append(j.index)
 
     def __CreateSolidifityModifier(self, context):
@@ -533,12 +546,12 @@ class D_Object:
         self.SetValSolidifity(context, loc, bool, snap=True, SV=dist)
 
 class Util:
-    def __init__(self, context, event, obj, modifer):
+    def __init__(self, context, event, obj, modifer, auto_merge):
         self.starMousePos = self.__StarPosMouse(context, event, obj) + 0.001
         self.starMousePosForAxis = False
         self.modifier = modifer
         self.auto_snap = bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge
-        bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge = False
+        bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge = auto_merge
         self.show_wire = obj.show_wire
         self.show_all_edges = obj.show_all_edges
         obj.show_wire = True
@@ -760,10 +773,10 @@ class DestructiveExtrude(bpy.types.Operator):
 
     def invoke(self, context, event):
         if context.space_data.type == 'VIEW_3D':
-            s = bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge = False
+            auto_merge = bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge = False
             self.m_obj = M_Object(context)
             self.d_obj = D_Object(context, self.m_obj.n_offset, self.m_obj.w_offset)
-            self.v3d = Util(context, event, self.d_obj.d_obj, self.m_obj.u_modifier)
+            self.v3d = Util(context, event, self.d_obj.d_obj, self.m_obj.u_modifier, auto_merge)
             self.enter = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '+', '*', '/', '.', ',']
 
             #args = (self, context)
