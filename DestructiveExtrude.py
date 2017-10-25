@@ -199,8 +199,8 @@ class M_Object:
         bm = bmesh.from_edit_mesh(self.m_Obj.data)
         face_selection = [f for f in bm.faces if f.select]
         save_pos = {}
-        distance = 0.000002
-        #distance = 0.2
+        #distance = 0.000002
+        distance = 0.2
         coordNof = []
         coordWof = []
         for i in bm.verts:
@@ -271,6 +271,7 @@ class D_Object:
         self.Normal = self.__GetNormal(context) # normal the first face for detect side offset
         self.vertx_for_move = [] # these vertices will move
 
+
         self.i_For_Comp_Axis = [] # these vertices responsible for maintaining proportions
         self.save_Coord = [] # save coordinate for change axis
         self.constrain_axis = False # Looks after whether or not to prepare the object for movement along the axis
@@ -286,6 +287,7 @@ class D_Object:
 
 
         self.__GetIndexForOffset(context)
+
         self.__CreateSolidifityModifier(context)
 
     def __Apply_transform(self, context):
@@ -301,27 +303,17 @@ class D_Object:
         '''get vertex index for offset'''
         tempN = []
         tempW = []
-        print('act - obj - ', context.active_object.name)
-        for i in self.d_obj.data.vertices:
-                for j, o in enumerate(self.n_offset):
-                    if context.active_object.matrix_world * o == context.active_object.matrix_world *i.co:
-                        tempN.append(context.active_object.matrix_world * self.n_offset[j])
-                        tempW.append(context.active_object.matrix_world * self.w_offset[j])
-                        self.i_offset.append(i.index)
-        self.n_offset = []
-        self.w_offset = []
+
+        for n, p in enumerate(self.w_offset):
+            for v in self.d_obj.data.vertices:
+                wp = context.active_object.matrix_world * p
+                vw = self.d_obj.matrix_world * v.co
+                if wp == vw:
+                    self.i_offset.append(v.index)
+                    tempN.append(context.active_object.matrix_world * self.n_offset[n])
+                    tempW.append(context.active_object.matrix_world * self.w_offset[n])
         self.n_offset = [self.d_obj.matrix_local * i for i in tempN]
         self.w_offset = [self.d_obj.matrix_local * i for i in tempW]
-        # tempN = []
-        # tempW = []
-        # for i in self.d_obj.data.vertices:
-        #         for j, o in enumerate(self.n_offset):
-        #             if o == i.co:
-        #                 tempN.append(context.active_object.matrix_world * self.n_offset[j])
-        #                 tempW.append(context.active_object.matrix_world * self.w_offset[j])
-        #                 self.i_offset.append(i.index)
-        # self.n_offset = tempN
-        # self.w_offset = tempW
 
     def __GetIndexForOffsetSolidify(self, context):
         for i in self.i_offset:
@@ -362,10 +354,13 @@ class D_Object:
 
     def __SwapCoordinate(self, context, coord):
         for j, i in enumerate(self.i_offset):
+            print(self.d_obj.data.vertices[i].co)
             self.d_obj.data.vertices[i].co = coord[j]
-        if len(self.i_offset2) > 0:
-            for j, i in enumerate(self.i_offset2):
-                self.d_obj.data.vertices[i].co = coord[j]
+            print(self.d_obj.data.vertices[i].co)
+            #print('Swap off')
+        # if len(self.i_offset2) > 0:
+        #     for j, i in enumerate(self.i_offset2):
+        #         self.d_obj.data.vertices[i].co = coord[j]
 
     def __Swap(self, context, bool):
         if self.d_obj.modifiers[0].thickness > 0 and 'UNION':
