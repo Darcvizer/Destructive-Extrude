@@ -597,8 +597,8 @@ class Util:
 
     def Finish(self, context, bool_index, m_obj, d_obj, coord, index, bevel=False):
         face = self.__Intersect(context, coord, index, m_obj, d_obj, bool_index)
-        bpy.context.scene.objects.unlink(d_obj)
-        bpy.data.objects.remove(d_obj)
+        #bpy.context.scene.objects.unlink(d_obj)
+        #bpy.data.objects.remove(d_obj)
         bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge = self.auto_snap
         m_obj.show_wire = self.show_wire
         m_obj.show_all_edges = self.show_all_edges
@@ -611,8 +611,12 @@ class Util:
             bpy.ops.mesh.edges_select_sharp()
             bpy.ops.transform.edge_bevelweight(value=1)
             bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.ops.object.mode_set(mode='OBJECT')
+
         for i in face:
             m_obj.data.polygons[i].select = True
+        bpy.ops.object.mode_set(mode='EDIT')
+
 
     def Cancel(self, context, bool_index, m_obj, d_obj):
         m_obj.modifiers.remove(m_obj.modifiers[bool_index])
@@ -625,11 +629,17 @@ class Util:
         bpy.ops.object.mode_set(mode='EDIT')
 
     def __Intersect(self, context, coord, index, objA, objB, bool_index):
-        bpy.ops.object.modifier_apply(modifier=objA.modifiers[bool_index].name)
+        
+        
         for j, i in enumerate(index):
                 objB.data.vertices[i].co = coord[j]
+        context.scene.objects.active = objB
+        bpy.ops.object.modifier_apply(modifier=objB.modifiers[0].name)
+        context.scene.objects.active = objA
+        bpy.ops.object.modifier_apply(modifier=objA.modifiers[bool_index].name)
 
         vertTemp = []
+
         for i in objA.data.vertices:
             countSel = 0
             for j in objB.data.vertices:
@@ -639,7 +649,9 @@ class Util:
                     vertTemp.append(i.index)
             if countSel == len(objB.data.vertices):
                 break
+
         face_index = []
+
         for i in objA.data.polygons:
             t = list(set(i.vertices) & set(vertTemp))
             if len(t) >= 3:
