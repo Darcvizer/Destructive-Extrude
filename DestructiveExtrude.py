@@ -312,8 +312,8 @@ class D_Object:
                     self.i_offset.append(v.index)
                     tempN.append(context.active_object.matrix_world * self.n_offset[n])
                     tempW.append(context.active_object.matrix_world * self.w_offset[n])
-        self.n_offset = [self.d_obj.matrix_local * i for i in tempN]
-        self.w_offset = [self.d_obj.matrix_local * i for i in tempW]
+        self.n_offset = [self.d_obj.matrix_world.inverted() * i for i in tempN]
+        self.w_offset = [self.d_obj.matrix_world.inverted() * i for i in tempW]
 
     def __GetIndexForOffsetSolidify(self, context):
         for i in self.i_offset:
@@ -354,13 +354,10 @@ class D_Object:
 
     def __SwapCoordinate(self, context, coord):
         for j, i in enumerate(self.i_offset):
-            print(self.d_obj.data.vertices[i].co)
             self.d_obj.data.vertices[i].co = coord[j]
-            print(self.d_obj.data.vertices[i].co)
-            #print('Swap off')
-        # if len(self.i_offset2) > 0:
-        #     for j, i in enumerate(self.i_offset2):
-        #         self.d_obj.data.vertices[i].co = coord[j]
+        if len(self.i_offset2) > 0:
+            for j, i in enumerate(self.i_offset2):
+                self.d_obj.data.vertices[i].co = coord[j]
 
     def __Swap(self, context, bool):
         if self.d_obj.modifiers[0].thickness > 0 and 'UNION':
@@ -598,8 +595,8 @@ class Util:
                 i.show_viewport = True
 
 
-    def Finish(self, context, bool_index, m_obj, d_obj, bevel=False):
-        bpy.ops.object.modifier_apply(modifier=m_obj.modifiers[bool_index].name)
+    def Finish(self, context, bool_index, m_obj, d_obj, coord, index, bevel=False):
+        face = self.__Intersect(context, coord, index, m_obj, d_obj, bool_index)
         bpy.context.scene.objects.unlink(d_obj)
         bpy.data.objects.remove(d_obj)
         bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge = self.auto_snap
@@ -614,6 +611,8 @@ class Util:
             bpy.ops.mesh.edges_select_sharp()
             bpy.ops.transform.edge_bevelweight(value=1)
             bpy.ops.mesh.select_all(action='DESELECT')
+        for i in face:
+            m_obj.data.polygons[i].select = True
 
     def Cancel(self, context, bool_index, m_obj, d_obj):
         m_obj.modifiers.remove(m_obj.modifiers[bool_index])
@@ -624,6 +623,36 @@ class Util:
         bpy.data.objects.remove(d_obj)
         self.__RetModifier(m_obj)
         bpy.ops.object.mode_set(mode='EDIT')
+
+    def __Intersect(self, context, coord, index, objA, objB, bool_index):
+        bpy.ops.object.modifier_apply(modifier=objA.modifiers[bool_index].name)
+        for j, i in enumerate(index):
+                objB.data.vertices[i].co = coord[j]
+
+        vertTemp = []
+        for i in objA.data.vertices:
+            countSel = 0
+            for j in objB.data.vertices:
+                if objA.matrix_world * i.co == objB.matrix_world * j.co:
+                    #i.select = True
+                    countSel +=1
+                    vertTemp.append(i.index)
+            if countSel == len(objB.data.vertices):
+                break
+        face_index = []
+        for i in objA.data.polygons:
+            t = list(set(i.vertices) & set(vertTemp))
+            if len(t) >= 3:
+                #i.select
+                face_index.append(i.index)
+        print('vert - ',vertTemp)
+        print('face - ',face_index)
+        return face_index
+
+
+
+
+
 
 class DestructiveExtrude(bpy.types.Operator):
     bl_idname = "mesh.destructive_extrude"
@@ -720,7 +749,7 @@ class DestructiveExtrude(bpy.types.Operator):
         context.area.header_text_set(draw(self, context, event, self.d_obj.S_val))
 
         if event.type == 'LEFTMOUSE':
-            self.v3d.Finish(context, self.m_obj.index_bool_modifier, self.m_obj.m_Obj, self.d_obj.d_obj)
+            self.v3d.Finish(context, self.m_obj.index_bool_modifier, self.m_obj.m_Obj, self.d_obj.d_obj, self.d_obj.n_offset, self.d_obj.i_offset)
             print('super sisi')
             context.area.header_text_set()
             return {'FINISHED'}
