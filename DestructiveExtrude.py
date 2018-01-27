@@ -143,119 +143,68 @@ def RayCast(self, context, event, ray_max=1000.0):
     run(best_obj, best_matrix, best_face, best_hit)
 
 class M_Object:
-    def __init__(self, context):
-        self.m_Obj = context.active_object # main object
+	def __init__(self, context):
+		self.m_Obj = context.active_object  # main object
+		
+		self.n_offset, self.w_offset = self.__offset(context)
+		# bpy.ops.mesh.duplicate_move(MESH_OT_duplicate={"mode": 1})
+		bpy.ops.object.mode_set(mode='OBJECT')
+		self.m_Obj.show_wire = True
+		self.m_Obj.show_all_edges = True
+		self.u_modifier = []  # save a on user modifier
+		self.__Off_All_Modifier(context)
+		self.index_bool_modifier = self.__Create_Boolean_Modifier(context)  # Index boolean modifiers
+	
+	def __Off_All_Modifier(self, context):
+		'''get vertex for offset'''
+		for i in self.m_Obj.modifiers:
+			if i.show_viewport:
+				self.u_modifier.append(i)
+				i.show_viewport = False
+	
+	def __Create_Boolean_Modifier(self, context):
+		'''Create Booleain Modifier and Return Modifier Index'''
+		bpy.ops.object.modifier_add(type='BOOLEAN')
+		for j, i in enumerate(self.m_Obj.modifiers):
+			if i.type == 'BOOLEAN' and i.show_viewport:
+				i.operation = 'DIFFERENCE'
+				i.object = context.selected_objects[0]
+				i.solver = 'CARVE'
+				return j
 
-        self.n_offset, self.w_offset = self.__offset(context)
-        #bpy.ops.mesh.duplicate_move(MESH_OT_duplicate={"mode": 1})
-        bpy.ops.object.mode_set(mode='OBJECT')
-        self.m_Obj.show_wire = True
-        self.m_Obj.show_all_edges = True
-        self.u_modifier = []# save a on user modifier
-        self.__Off_All_Modifier(context)
-        self.index_bool_modifier = self.__Create_Boolean_Modifier(context) # Index boolean modifiers
+	
+	def __offset(self, context):
+		bm = bmesh.from_edit_mesh(self.m_Obj.data)
+		
+		# distance = 0.000002
+		distance = 0.2
+		coordNof = []
+		coordWof = []
 
-    def __Off_All_Modifier(self,context):
-        '''get vertex for offset'''
-        for i in self.m_Obj.modifiers:
-            if i.show_viewport:
-                self.u_modifier.append(i)
-                i.show_viewport = False
-
-    def __Create_Boolean_Modifier(self, context):
-        '''Create Booleain Modifier and Return Modifier Index'''
-        bpy.ops.object.modifier_add(type='BOOLEAN')
-        for j, i in enumerate(self.m_Obj.modifiers):
-            if i.type == 'BOOLEAN' and i.show_viewport:
-                i.operation = 'DIFFERENCE'
-                i.object = context.selected_objects[0]
-                i.solver = 'CARVE'
-                return j
-
-    # def __GetCoord(self, context, face, ind=[], coor=[]):
-    #     '''Get coordinate vertex for offset'''
-    #     bm = bmesh.from_edit_mesh(self.m_Obj.data)
-    #     bm.faces.ensure_lookup_table()
-    #     if not ind:
-    #         coord = []
-    #         index = []
-    #         for f in face:
-    #             for e in bm.faces[f].edges:
-    #                 if abs(degrees(e.calc_face_angle_signed())) > 29.999:
-    #                     e.select = True
-    #                     for v in e.verts:
-    #                         if v.index not in index:
-    #                             coord.append(v.co.copy())
-    #                             index.append(v.index)
-    #         return coord, index
-    #     else:
-    #         bm.verts.ensure_lookup_table()
-    #         for j, i in enumerate(ind):
-    #             bm.verts[i].co = coor[j]
-    #         for i in face:
-    #             bm.faces[i].select = True
-
-    def __offset(self, context):
-        bm = bmesh.from_edit_mesh(self.m_Obj.data)
-        face_selection = [f for f in bm.faces if f.select]
-        save_pos = {}
-        #distance = 0.000002
-        distance = 0.2
-        coordNof = []
-        coordWof = []
-        for i in bm.verts:
-            if i.select:
-                save_pos[i.index] = i.co.copy()
-                coordNof.append(i.co.copy())
-        move = {}
-
-        for i in face_selection:
-            for edge in i.edges:
-                if edge.link_faces[0].select and edge.link_faces[1].select:
-                    continue
-                try:  # ____Fix opening edges
-                    angle = degrees(edge.calc_face_angle_signed())
-                    nor = [i.normal for i in edge.link_faces if not i.select]
-                except:
-                    continue
-
-                if angle > 29.999:  # ____Fix
-                    if angle > 90.001:
-                        print(angle)
-                        n = nor[0] + i.normal
-                        for v in edge.verts:
-                            if isinstance(move.get(v.index), type(None)):
-                                v.co += n * distance
-                                move[v.index] = nor
-
-                            if move.get(v.index) != nor:
-                                v.co += n * distance
-                                move[v.index] = nor
-
-                    for v in edge.verts:
-                        print(angle)
-                        if isinstance(move.get(v.index), type(None)):
-                            v.co += nor[0] * distance
-                            move[v.index] = nor
-
-
-                        if move.get(v.index) != nor:
-                            v.co += nor[0] * distance
-                            move[v.index] = nor
-
-
-        bpy.ops.mesh.duplicate_move(MESH_OT_duplicate={"mode": 1})
-        bpy.ops.mesh.separate(type='SELECTED')
-        bm.verts.ensure_lookup_table()
-        for i in save_pos:
-            coordWof.append(bm.verts[i].co.copy())
-            bm.verts[i].co = save_pos.get(i)
-
-
-        return coordNof, coordWof
-
-    def GetBool(self):
-        return self.m_Obj[self.index_bool_modifier]
+		
+		for i in bm.select_history:
+			for edge in i.edges:
+				if edge.link_faces[0].select and edge.link_faces[1].select:
+					continue
+				try:  # ____Fix opening edges
+					angle = degrees(edge.calc_face_angle_signed())
+					if angle > 89.999:
+						nor = [i.normal for i in edge.link_faces if not i.select]
+						v1 , v2 = edge.verts
+						coordNof.append(v1.co.copy())
+						coordNof.append(v2.co.copy())
+						
+						coordWof.append(v1.co.copy() + nor * distance)
+						coordWof.append(v2.co.copy() + nor * distance)
+				except:
+					continue
+					
+		bpy.ops.mesh.duplicate_move(MESH_OT_duplicate={"mode": 1})
+		bpy.ops.mesh.separate(type='SELECTED')
+		return coordNof, coordWof
+	
+	def GetBool(self):
+		return self.m_Obj[self.index_bool_modifier]
 
 class D_Object:
     def __init__(self, context, n_offset, w_offset):
