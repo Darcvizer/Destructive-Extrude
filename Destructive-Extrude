@@ -1,0 +1,167 @@
+
+import bmesh
+from math import degrees
+from mathutils import Vector, kdtree
+from bpy_extras import view3d_utils
+from bpy.props import StringProperty
+import blf
+import bgl
+from math import sqrt
+import numpy as np
+from mathutils.geometry import intersect_line_plane
+import os
+from bpy.props import IntProperty, FloatProperty
+
+from bpy.types import Operator
+from math import sin, cos, pi, radians
+from time import perf_counter
+from bpy.props import (
+	BoolProperty,
+	FloatProperty,
+	EnumProperty, )
+
+bl_info = {
+	"name": "Destructive Extrude :)",
+	"location": "View3D > Add > Mesh > Destructive Extrude,",
+	"description": "Extrude how SketchUp.",
+	"author": "Vladislav Kindushov",
+	"version": (1, 0, 0),
+	"blender": (2, 80, 0),
+	"category": "Mesh",
+}
+
+
+def GetCursorPosition(self, is_Set = False):
+	if is_Set and self.CursorLocation != 'NONE':
+		context.scene.cursor_location = self.CursorLocation
+	else:
+		self.CursorLocation = context.scene.cursor_location
+
+def CreateNewObject(self):
+	# ________Duplicate Object________#
+	bpy.ops.mesh.duplicate_move()
+	bpy.ops.mesh.separate(type='SELECTED')
+	bpy.ops.object.mode_set(mode='OBJECT')
+	self.ExtrudeObject = context.selected_objects[-1]
+	# ________Clear Modifiers________#
+	while len(self.ExtrudeObject.modifiers) != 0:
+		i.remove(self.ExtrudeObject.modifiers[0])
+
+def GetVisualSetings(self):
+	self.ShowAllEdges = context.active_object.show_all_edges
+	self.ShowAllEdges = context.active_object.show_wire
+
+
+def SetVisualSetings(self):
+	context.active_object.show_all_edges = True
+	context.active_object.show_wire = True
+
+def GetVisualModifiers(self):
+	for i in self.MainObject.modifiers:
+		if i.show_viewport:
+			self.VisibilityModifiers.append(i.name)
+			i.show_viewport = False
+
+
+def CreateModifier(self):
+	#________Set Boolean________#
+	context.view_layer.objects.active = self.MainObject
+	self.bool = context.object.modifiers.new('DestructiveBoolean', 'BOOLEAN')
+	self.mObj.modifiers[-1].operation = 'DIFFERENCE'
+	self.mObj.modifiers[-1].object = self.sObj
+	# ________Set Solidify________#
+	context.view_layer.objects.active = self.ExtrudeObject
+	context.object.modifiers.new('DestructiveSolidify', 'SOLIDIFY')
+	context.object.modifiers[-1].use_even_offset = True
+	context.object.modifiers[-1].offset = -0.99959
+
+def GetMouseLocation:
+
+def SetSolidifyValue(self, value):
+	self.ExtrudeObject.modifiers[-1].thickness = value
+
+def CalculateNormal(self):
+	for i in self.ExtrudeObject.data.polygons:
+		self.GeneralNormal += i.normal.copy()
+
+
+
+class DestuctiveExtrude(bpy.types.Operator):
+	bl_idname = "mesh.destuctive_extrude"
+	bl_label = "Destructive Extrude"
+	bl_options = {"REGISTER", "UNDO", "GRAB_CURSOR", "BLOCKING"}
+
+	@classmethod
+	def poll(cls, context):
+		return (context.mode == "EDIT_MESH")
+
+	def invoke(self,context, event):
+		if context.space_data.type == 'VIEW_3D':
+			self.GeneralNormal = Vector((0.0,0.0,0.0))
+			self.ShowAllEdges = None
+			self.ShowWire = None
+			self.CursorLocation = None
+			self.VisibilityModifiers=[]
+			self.MainObject = context.active_object
+			self.ExtrudeObject = None
+
+
+
+			context.window_manager.modal_handler_add(self)
+			self.inFront = context.object.show_in_front
+			#context.object.show_in_front = True
+			self.mObj = context.active_object
+			bpy.ops.mesh.duplicate_move()
+			bpy.ops.mesh.separate(type='SELECTED')
+			bpy.ops.object.mode_set(mode='OBJECT')
+			self.sObj = context.selected_objects[-1]
+			context.view_layer.objects.active = self.sObj
+			context.object.modifiers.new('Solidify', 'SOLIDIFY')
+			context.object.modifiers[-1].use_even_offset = True
+			context.object.modifiers[-1].offset = -0.99959
+			context.object.display_type = 'WIRE'
+			bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
+			self.sObj.scale = Vector((1.000061, 1.000061, 1.000061))
+			context.object.show_in_front = False
+			context.view_layer.objects.active = self.mObj
+			self.bool = context.object.modifiers.new('BOOLEAN', 'BOOLEAN')
+			self.mObj.modifiers[-1].operation = 'DIFFERENCE'
+			self.mObj.modifiers[-1].object = self.sObj
+
+
+
+
+			self.first_mouse_x = event.mouse_x
+
+
+
+
+			return {'RUNNING_MODAL'}
+		else:
+			self.report({'WARNING'}, "is't 3dview")
+			return {'CANCELLED'}
+
+	def modal(self, context, event):
+		if event.type == 'MOUSEMOVE':
+			delta = self.first_mouse_x - event.mouse_x
+			self.sObj.modifiers[-1].thickness = (delta * 0.01) * -1
+
+		elif event.type == 'LEFTMOUSE':
+			return {'FINISHED'}
+
+		elif event.type in {'RIGHTMOUSE', 'ESC'}:
+			return {'CANCELLED'}
+		return {'RUNNING_MODAL'}
+
+classes = (DestuctiveExtrude)
+
+def register():
+	bpy.utils.register_class(classes)
+
+
+def unregister():
+	bpy.utils.unregister_class(classes)
+
+
+if __name__ == "__main__":
+	register()j
