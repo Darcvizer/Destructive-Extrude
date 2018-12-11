@@ -31,7 +31,7 @@ bl_info = {
 }
 
 
-def GetCursorPosition(self, is_Set = False):
+def CursorPosition(self, is_Set = False):
 	if is_Set and self.CursorLocation != 'NONE':
 		context.scene.cursor_location = self.CursorLocation
 	else:
@@ -51,7 +51,6 @@ def GetVisualSetings(self):
 	self.ShowAllEdges = context.active_object.show_all_edges
 	self.ShowAllEdges = context.active_object.show_wire
 
-
 def SetVisualSetings(self):
 	context.active_object.show_all_edges = True
 	context.active_object.show_wire = True
@@ -61,7 +60,6 @@ def GetVisualModifiers(self):
 		if i.show_viewport:
 			self.VisibilityModifiers.append(i.name)
 			i.show_viewport = False
-
 
 def CreateModifier(self):
 	#________Set Boolean________#
@@ -75,7 +73,26 @@ def CreateModifier(self):
 	context.object.modifiers[-1].use_even_offset = True
 	context.object.modifiers[-1].offset = -0.99959
 
-def GetMouseLocation:
+def GetMouseLocation(self, context):
+	region = bpy.context.region
+	rv3d = bpy.context.region_data
+	coord = event.mouse_region_x, event.mouse_region_y
+	view_vector_mouse = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+	ray_origin_mouse = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+
+	pointLoc = intersect_line_plane(ray_origin_mouse, ray_origin_mouse + view_vector_mouse,
+									self.center, rv3d.view_rotation * Vector((0.0, 0.0, -1.0)), False)
+	if self.NormalMove:
+		return (self.GeneralNormal * pointLoc) * -1
+	else:
+		if self.AxisMove == 'X':
+			direction = Vector((1.0,0.0,0.0))
+
+		elif self.AxisMove == 'Y':
+			direction = Vector((0.0, 1.0, 0.0))
+
+		elif self.AxisMove == 'Z':
+			direction = Vector((0.0, 0.0, 1.0))
 
 def SetSolidifyValue(self, value):
 	self.ExtrudeObject.modifiers[-1].thickness = value
@@ -97,6 +114,8 @@ class DestuctiveExtrude(bpy.types.Operator):
 
 	def invoke(self,context, event):
 		if context.space_data.type == 'VIEW_3D':
+			self.AxisMove = 'Z'
+			self.NormalMove = True
 			self.GeneralNormal = Vector((0.0,0.0,0.0))
 			self.ShowAllEdges = None
 			self.ShowWire = None
@@ -105,34 +124,13 @@ class DestuctiveExtrude(bpy.types.Operator):
 			self.MainObject = context.active_object
 			self.ExtrudeObject = None
 
-
-
-			context.window_manager.modal_handler_add(self)
-			self.inFront = context.object.show_in_front
-			#context.object.show_in_front = True
-			self.mObj = context.active_object
-			bpy.ops.mesh.duplicate_move()
-			bpy.ops.mesh.separate(type='SELECTED')
-			bpy.ops.object.mode_set(mode='OBJECT')
-			self.sObj = context.selected_objects[-1]
-			context.view_layer.objects.active = self.sObj
-			context.object.modifiers.new('Solidify', 'SOLIDIFY')
-			context.object.modifiers[-1].use_even_offset = True
-			context.object.modifiers[-1].offset = -0.99959
-			context.object.display_type = 'WIRE'
-			bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
-			self.sObj.scale = Vector((1.000061, 1.000061, 1.000061))
-			context.object.show_in_front = False
-			context.view_layer.objects.active = self.mObj
-			self.bool = context.object.modifiers.new('BOOLEAN', 'BOOLEAN')
-			self.mObj.modifiers[-1].operation = 'DIFFERENCE'
-			self.mObj.modifiers[-1].object = self.sObj
-
-
-
-
-			self.first_mouse_x = event.mouse_x
-
+			GetVisualModifiers(self)
+			GetVisualSetings(self)
+			CursorPosition(self)
+			CreateNewObject(self)
+			CreateModifier(self)
+			CalculateNormal(self)
+			self.MouseLocation = GetMouseLocation(self, context)
 
 
 
