@@ -1,4 +1,4 @@
-
+import bpy
 import bmesh
 from math import degrees
 from mathutils import Vector, kdtree
@@ -31,13 +31,13 @@ bl_info = {
 }
 
 
-def CursorPosition(self, is_Set = False):
+def CursorPosition(self,context, is_Set = False):
 	if is_Set and self.CursorLocation != 'NONE':
 		context.scene.cursor_location = self.CursorLocation
 	else:
 		self.CursorLocation = context.scene.cursor_location
 
-def CreateNewObject(self):
+def CreateNewObject(self,context):
 	# ________Duplicate Object________#
 	bpy.ops.mesh.duplicate_move()
 	bpy.ops.mesh.separate(type='SELECTED')
@@ -45,45 +45,44 @@ def CreateNewObject(self):
 	self.ExtrudeObject = context.selected_objects[-1]
 	# ________Clear Modifiers________#
 	while len(self.ExtrudeObject.modifiers) != 0:
-		i.remove(self.ExtrudeObject.modifiers[0])
+		self.ExtrudeObject.modifiers.remove(self.ExtrudeObject.modifiers[0])
 
-def GetVisualSetings(self):
+def GetVisualSetings(self,context):
 	self.ShowAllEdges = context.active_object.show_all_edges
 	self.ShowAllEdges = context.active_object.show_wire
 
-def SetVisualSetings(self):
+def SetVisualSetings(self,context):
 	context.active_object.show_all_edges = True
 	context.active_object.show_wire = True
 
-def GetVisualModifiers(self):
+def GetVisualModifiers(self,context):
 	for i in self.MainObject.modifiers:
 		if i.show_viewport:
 			self.VisibilityModifiers.append(i.name)
 			i.show_viewport = False
 
-def CreateModifier(self):
+def CreateModifier(self,context):
 	#________Set Boolean________#
 	context.view_layer.objects.active = self.MainObject
 	self.bool = context.object.modifiers.new('DestructiveBoolean', 'BOOLEAN')
-	self.mObj.modifiers[-1].operation = 'DIFFERENCE'
-	self.mObj.modifiers[-1].object = self.sObj
+	bpy.context.object.modifiers["DestructiveBoolean"].operation = 'DIFFERENCE'
 	# ________Set Solidify________#
 	context.view_layer.objects.active = self.ExtrudeObject
 	context.object.modifiers.new('DestructiveSolidify', 'SOLIDIFY')
-	context.object.modifiers[-1].use_even_offset = True
-	context.object.modifiers[-1].offset = -0.99959
+	context.object.modifiers['DestructiveSolidify'].use_even_offset = True
+	context.object.modifiers['DestructiveSolidify'].offset = -0.99959
 
-def GetMouseLocation(self, context):
+def GetMouseLocation(self, event, context):
 	region = bpy.context.region
 	rv3d = bpy.context.region_data
 	coord = event.mouse_region_x, event.mouse_region_y
 	view_vector_mouse = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
 	ray_origin_mouse = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
 
-	pointLoc = intersect_line_plane(ray_origin_mouse, ray_origin_mouse + view_vector_mouse,
-									self.center, rv3d.view_rotation * Vector((0.0, 0.0, -1.0)), False)
+	pointLoc = intersect_line_plane(ray_origin_mouse, ray_origin_mouse @ view_vector_mouse,
+									context.object.location, rv3d.view_rotation @ Vector((0.0,0.0,-1.0)),no_flip=False)
 	if self.NormalMove:
-		return (self.GeneralNormal * pointLoc) * -1
+		return (self.GeneralNormal @ pointLoc) * -1
 	else:
 		if self.AxisMove == 'X':
 			direction = Vector((1.0,0.0,0.0))
@@ -94,12 +93,28 @@ def GetMouseLocation(self, context):
 		elif self.AxisMove == 'Z':
 			direction = Vector((0.0, 0.0, 1.0))
 
-def SetSolidifyValue(self, value):
+def SetSolidifyValue(self,context, value):
 	self.ExtrudeObject.modifiers[-1].thickness = value
 
-def CalculateNormal(self):
+def CalculateNormal(self,context):
 	for i in self.ExtrudeObject.data.polygons:
 		self.GeneralNormal += i.normal.copy()
+
+def TransformObject(self, context):
+	bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
+	bpy.ops.view3d.snap_cursor_to_selected()
+	bpy.context.scene.tool_settings.transform_pivot_point = 'CURSOR'
+	bpy.context.scene.tool_settings.transform_pivot_point = 'CURSOR'
+	bpy.ops.transform.resize(value=(1.000001, 1.000001, 1.000001))
+
+def GetFaceNormal(self,context):
+	for i in self.ExtrudeObject.data.polygons:
+		self.FaceNormal.append(i.normal.copy())
+
+def GetMainFaceIndex(self, contex):
+	for i in self.ExtrudeObject.data.polygons:
+		self.IndexFace.append(i.index.copy())
+
 
 
 
@@ -114,9 +129,11 @@ class DestuctiveExtrude(bpy.types.Operator):
 
 	def invoke(self,context, event):
 		if context.space_data.type == 'VIEW_3D':
+			self.MainFaceIndex = []
 			self.AxisMove = 'Z'
 			self.NormalMove = True
 			self.GeneralNormal = Vector((0.0,0.0,0.0))
+			self.FaceNormal = []
 			self.ShowAllEdges = None
 			self.ShowWire = None
 			self.CursorLocation = None
@@ -124,13 +141,13 @@ class DestuctiveExtrude(bpy.types.Operator):
 			self.MainObject = context.active_object
 			self.ExtrudeObject = None
 
-			GetVisualModifiers(self)
-			GetVisualSetings(self)
-			CursorPosition(self)
-			CreateNewObject(self)
-			CreateModifier(self)
-			CalculateNormal(self)
-			self.MouseLocation = GetMouseLocation(self, context)
+			GetVisualModifiers(self,context)
+			GetVisualSetings(self,context)
+			CursorPosition(self,context)
+			CreateNewObject(self,context)
+			CreateModifier(self,context)
+			CalculateNormal(self,context)
+			self.StartMouseLocation = GetMouseLocation(self,event, context)
 
 
 
@@ -141,8 +158,7 @@ class DestuctiveExtrude(bpy.types.Operator):
 
 	def modal(self, context, event):
 		if event.type == 'MOUSEMOVE':
-			delta = self.first_mouse_x - event.mouse_x
-			self.sObj.modifiers[-1].thickness = (delta * 0.01) * -1
+			SetSolidifyValue(self, GetMouseLocation(self,event, context) - self.StartMouseLocation)
 
 		elif event.type == 'LEFTMOUSE':
 			return {'FINISHED'}
@@ -162,4 +178,4 @@ def unregister():
 
 
 if __name__ == "__main__":
-	register()j
+	register()
