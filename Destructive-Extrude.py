@@ -187,21 +187,27 @@ def Finish(self, context, BevelUpdate=False):
 
 	context.view_layer.objects.active = self.MainObject
 	bpy.ops.object.modifier_apply(apply_as='DATA', modifier='DestructiveBoolean')
-	# for f in self.ExtrudeObject.data.polygons:
-	# 	lose = False
-	# 	for v in f.vertices:
-	# 		if v in self.MainVertsIndex:
-	# 			lose = True
-	# 			break
-	# 	if lose:
-	# 		continue
-	# 	else:
-	# 		center = self.MainObject.matrix_world.inverted() @ f.center
-	# 		normal = self.MainObject.matrix_world.inverted() @ f.normal
-	# 		print(context.active_object.name)
-	# 		result, location, normal, index = self.MainObject.ray_cast(center,normal)
-	# 		if result:
-	# 			self.MainObject.data.polygons[index].select = True
+	bpy.context.scene.update()
+	context.active_object.data.update()
+	context.active_object.data.update(calc_edges=False)
+	context.active_object.update_tag(refresh={'OBJECT', 'DATA', 'TIME'})
+	bpy.ops.object.mode_set(mode='EDIT')
+	bpy.ops.object.mode_set(mode='OBJECT')
+
+	for f in self.ExtrudeObject.data.polygons:
+		lose = False
+		for v in f.vertices:
+			if v in self.MainVertsIndex:
+				lose = True
+				break
+		if lose:
+			continue
+		else:
+			center = self.MainObject.matrix_world.inverted() @ f.center
+			normal = self.MainObject.matrix_world.inverted() @ f.normal
+			result, location, normal, index = self.MainObject.ray_cast(center,normal)
+			if result:
+				self.MainObject.data.polygons[index].select = True
 	bpy.data.objects.remove(self.ExtrudeObject)
 	GetVisualSetings(self, context, True)
 	GetVisualModifiers(self, context, True)
