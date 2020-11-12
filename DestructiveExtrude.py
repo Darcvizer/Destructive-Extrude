@@ -1,551 +1,465 @@
 import bpy
 import bmesh
-from math import degrees
-from mathutils import Vector, kdtree
-from bpy_extras import view3d_utils
-from bpy.props import StringProperty
-import blf
-import bgl
-from math import sqrt
-import numpy as np
+from mathutils import Matrix, Vector, kdtree
 from mathutils.geometry import intersect_line_plane
-import os
-from bpy.props import IntProperty, FloatProperty
-
-from bpy.types import Operator
-from math import sin, cos, pi, radians
-from time import perf_counter
-from bpy.props import (
-	BoolProperty,
-	FloatProperty,
-	EnumProperty, )
+from bpy_extras import view3d_utils
 
 bl_info = {
-	"name": "Destructive Extrude :)",
-	"location": "View3D > Add > Mesh > Destructive Extrude,",
-	"description": "Extrude how SketchUp.",
-	"author": "Vladislav Kindushov",
-	"version": (0, 9, 0),
-	"blender": (2, 7, 8),
-	"category": "Mesh",
+    "name": "Destructive Extrude :)",
+    "location": "View3D > Add > Mesh > Destructive Extrude,",
+    "description": "Extrude how SketchUp.",
+    "author": "Vladislav Kindushov",
+    "version": (0, 1, 0),
+    "blender": (2, 91, 0),
+    "category": "Mesh",
 }
+EN_Mode = None
+def SetENMode(mode):
+    global EN_Mode
+    EN_Mode = mode
 
+class State():
+    def __init__(self, LocalMatrix, Normal):
+        self.GX = [Vector((-1,0,0)), Vector((0,1,0)), 'GX']
+        self.GY = [Vector((0,-1,0)), Vector((-1,0,0)), 'GY']
+        self.GZ = [Vector((0,0,-1)), self.Z_Plane(), 'GZ'] 
 
-def draw_callback_px(self, context):
-	width = None
-	for region in bpy.context.area.regions:
-		if region.type == "TOOLS":
-			width = region.width
-			break
-	
-	font_id = 0
-	
-	bgl.glColor4f(1, 1, 1, 0.5)
-	blf.position(font_id, width + 15, 60, 0)
-	blf.size(font_id, 20, 72)
-	blf.draw(font_id, "Offset: ")
-	blf.position(font_id, width + 85, 60, 0)
-	blf.size(font_id, 20, 72)
-	if self.draw:
-		blf.draw(font_id, self.key)
-	else:
-		if self.var[1].modifiers['Solidify'].thickness < 0.0:
-			blf.draw(font_id, self.key[:6])
-		else:
-			blf.draw(font_id, self.key[:5])
-	
-	# restore opengl defaults
-	bgl.glDisable(bgl.GL_BLEND)
-	bgl.glColor4f(0.0, 0.0, 0.0, 1.0)
+        self.LX = [LocalMatrix.inverted() @ Vector((1,0,0)), LocalMatrix.inverted() @ (Vector((0,1,0))), 'LX']
+        self.LY = [LocalMatrix.inverted() @ Vector((0,1,0)), LocalMatrix.inverted() @ (Vector((1,0,0))), 'LY']
+        self.LZ = [LocalMatrix.inverted() @ Vector((0,0,1)), self.Z_Local_Plane(), 'LZ']
 
+        cam = bpy.context.region_data.view_rotation @ Vector((0.0,0.0,-1.0))
+        self.Normal = [Normal, cam, 'N']
 
-def RayCast(self, context, event, ray_max=1000.0):
-	"""Run this function on left mouse, execute the ray cast"""
-	
-	def visible_objects_and_duplis():
-		"""Loop over (object, matrix) pairs (mesh only)"""
-		for obj in context.visible_objects:
-			if obj.type == 'MESH':
-				yield (obj, obj.matrix_world.copy())
-			if obj.dupli_type != 'NONE':
-				obj.dupli_list_create(scene)
-				for dob in obj.dupli_list:
-					obj_dupli = dob.object
-					if obj_dupli.type == 'MESH':
-						yield (obj_dupli, dob.matrix.copy())
-			obj.dupli_list_clear()
-	
-	def obj_ray_cast(obj, matrix):
-		"""Wrapper for ray casting that moves the ray into object space"""
-		# get the ray relative to the object
-		matrix_inv = matrix.inverted()
-		ray_origin_obj = matrix_inv * ray_origin
-		ray_target_obj = matrix_inv * ray_target
-		ray_direction_obj = ray_target_obj - ray_origin_obj
-		d = ray_direction_obj.length
-		ray_direction_obj.normalize()
-		success, location, normal, face_index = obj.ray_cast(ray_origin_obj, ray_direction_obj)
-		if face_index != -1:
-			return location, normal, face_index
-		else:
-			return None, None, None
-	
-	# get the context arguments
-	scene = context.scene
-	region = context.region
-	rv3d = context.region_data
-	coord = event.mouse_region_x, event.mouse_region_y
-	# get the ray from the viewport and mouse
-	view_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord).normalized()
-	ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
-	ray_target = ray_origin + view_vector
-	# cast rays and find the closest object
-	best_length_squared = -1.0
-	best_obj = None
-	best_matrix = None
-	best_face = None
-	best_hit = None
-	
-	for obj, matrix in visible_objects_and_duplis():
-		if obj.name == self.d_obj.d_obj.name:
-			continue
-		if obj.type == 'MESH':
-			hit, normal, face_index = obj_ray_cast(obj, matrix)
-			if hit is not None:
-				hit_world = matrix * hit
-				scene.cursor_location = hit_world
-				length_squared = (hit_world - ray_origin).length_squared
-				if best_obj is None or length_squared < best_length_squared:
-					best_length_squared = length_squared
-					best_obj = obj
-					best_matrix = matrix
-					best_face = face_index
-					best_hit = hit
-					break
-	
-	def run(best_obj, best_matrix, best_face, best_hit):
-		best_distance = float("inf")  # use float("inf") (infinity) to have unlimited search range
-		mesh = best_obj.data
-		best_matrix = best_obj.matrix_world
-		for vert_index in mesh.polygons[best_face].vertices:
-			vert_coord = mesh.vertices[vert_index].co
-			distance = (vert_coord - best_hit).magnitude
-			if distance < best_distance:
-				best_distance = distance
-				scene.cursor_location = best_matrix * vert_coord
-		for v0, v1 in mesh.polygons[best_face].edge_keys:
-			p0 = mesh.vertices[v0].co
-			p1 = mesh.vertices[v1].co
-			p = (p0 + p1) / 2
-			distance = (p - best_hit).magnitude
-			if distance < best_distance:
-				best_distance = distance
-				scene.cursor_location = best_matrix * p
-		face_pos = Vector(mesh.polygons[best_face].center)
-		distance = (face_pos - best_hit).magnitude
-		if distance < best_distance:
-			best_distance = distance
-			scene.cursor_location = best_matrix * face_pos
-	
-	try:
-		run(best_obj, best_matrix, best_face, best_hit)
-	except:
-		pass
+        self.Current = self.Normal
+    
+    def Z_Plane(self):
+        cam = bpy.context.region_data.view_rotation @ Vector((0.0,0.0,-1.0))
+        val = Vector((0,1,0)).dot(cam)
+        
+        if val > 0.5:
+            return Vector((0,-1,cam.z))
+        elif val < -0.5:
+            return Vector((0,1,cam.z))
+        
+    def Z_Local_Plane(self):
+        cam = bpy.context.active_object.matrix_world.inverted() @ (bpy.context.region_data.view_rotation @ Vector((0.0,0.0,-1.0)))
+        val = Vector((0,1,0)).dot(cam)
+        
+        if val > 0.5:
+            return Vector((0,1,0))
+        elif val < 0.5:
+            return Vector((0,-1,0))
+    
+    def SwapLocalGloval(self):
+        C = self.Current[2]
 
-
-class M_Object:
-	def __init__(self, context):
-		self.m_Obj = context.active_object  # main object
-		self.center_selection = None
-		self.direction = Vector((0.0, 0.0, 0.0))
-		self.n_offset, self.w_offset = self.__offset(context)
-		# bpy.ops.mesh.duplicate_move(MESH_OT_duplicate={"mode": 1})
-		bpy.ops.object.mode_set(mode='OBJECT')
-		self.show_all_edges = self.m_Obj.show_all_edges
-		self.show_wire = self.m_Obj.show_wire
-		self.m_Obj.show_wire = True
-		self.m_Obj.show_all_edges = True
-		self.u_modifier = []  # save a on user modifier
-		self.__Off_All_Modifier(context)
-		self.index_bool_modifier = self.__Create_Boolean_Modifier(context)  # Index boolean modifiers
-	
-	def __Off_All_Modifier(self, context):
-		'''get vertex for offset'''
-		for i in self.m_Obj.modifiers:
-			if i.show_viewport:
-				self.u_modifier.append(i)
-				i.show_viewport = False
-	
-	def __Create_Boolean_Modifier(self, context):
-		'''Create Booleain Modifier and Return Modifier Index'''
-		bpy.ops.object.modifier_add(type='BOOLEAN')
-		for j, i in enumerate(self.m_Obj.modifiers):
-			if i.type == 'BOOLEAN' and i.show_viewport:
-				i.operation = 'DIFFERENCE'
-				i.object = context.selected_objects[0]
-				i.solver = 'CARVE'
-				return j
-	
-	def __offset(self, context):
-		bm = bmesh.from_edit_mesh(self.m_Obj.data)
-		
-		distance = 0.000002
-		#distance = 0.2
-		coordNof = []
-		coordWof = []
-		center = Vector((0.0, 0.0, 0.0))
-		
-		for i in bm.select_history:
-			for edge in i.edges:
-				if edge.link_faces[0].select and edge.link_faces[1].select:
-					continue
-				
-				angle = degrees(edge.calc_face_angle_signed())
-				if angle > 89.999:
-					nor = [i.normal for i in edge.link_faces if not i.select]
-					v1, v2 = edge.verts
-					coordNof.append(v1.co.copy())
-					coordNof.append(v2.co.copy())
-					
-					coordWof.append(v1.co.copy() + nor[0] * distance)
-					coordWof.append(v2.co.copy() + nor[0] * distance)
-			center += i.calc_center_median()
-			self.direction += self.m_Obj.matrix_world.to_3x3() * i.normal.copy()
-		
-		self.center_selection = self.m_Obj.matrix_world * (center / len(bm.select_history))
-		bpy.ops.mesh.duplicate_move(MESH_OT_duplicate={"mode": 1})
-		bpy.ops.mesh.separate(type='SELECTED')
-		return coordNof, coordWof
-	
-	def GetBool(self):
-		return self.m_Obj[self.index_bool_modifier]
-
-
-class D_Object:
-	def __init__(self, context, n_offset, w_offset):
-		# Use in normal move
-		self.d_obj = context.selected_objects[0]  # extrude object
-		self.i_offset = []  # index offset vertex
-		self.n_offset = [context.active_object.matrix_world * i for i in n_offset]  # coordinate with not offset
-		self.w_offset = [context.active_object.matrix_world * i for i in w_offset]  # coordinate with offset
-		# .__GetIndexForOffsetSolidify(context)
-		# self.__CreateSolidifityModifier(context)
-		# self.d_obj.hide = True
-		self.d_obj.draw_type = 'WIRE'
-		# Use in axis mode
-		self.vertx_for_move = []  # these vertices will move
-		self.state_solydifity = 'DIFFERENCE'
-		self.index_for_axis = None
-		print('n_offset', self.n_offset[:])
-		print('n_offset', self.w_offset[:])
-		# self.i_For_Comp_Axis = []  # these vertices responsible for maintaining proportions
-		# self.save_Coord = []  # save coordinate for change axis
-		# self.constrain_axis = False  # Looks after whether or not to prepare the object for movement along the axis
-		# self.i_offset2 = []
-		# self.axis = False
-		# self.KDT = self.__KDTree(self.d_obj.data)
-		# self.KDA = None
-		# self.temp_verts = None
-		# self.S_val = 0
-		#
-		# self.i_For_Comp_Axis2 = []
-		#
-		self.__GetIndexForOffsetSolidify(context)
-		
-		self.__CreateSolidifityModifier(context)
-	
-	def __GetIndexForOffsetSolidify(self, context):
-		for i in self.n_offset:
-			for j in self.d_obj.data.vertices:
-				if self.d_obj.matrix_world * j.co == i:
-					self.i_offset.append(j.index)
-		self.SwapCoordinate(context, self.w_offset)
-	
-	def __CreateSolidifityModifier(self, context):
-		for i in self.d_obj.modifiers:
-			self.d_obj.modifiers.remove(i)
-		
-		self.d_obj.modifiers.new('Solidify', 'SOLIDIFY')
-		self.d_obj.modifiers[0].use_even_offset = True
-		self.d_obj.modifiers[0].use_quality_normals = True
-		self.d_obj.modifiers[0].thickness = 0.1
-	
-	def SetValSolidifity(self, context, value):
-		self.d_obj.modifiers[0].thickness = value
-	
-	def SwapCoordinate(self, context, mode):
-		for j, i in enumerate(self.i_offset):
-			self.d_obj.data.vertices[i].co = mode[j]
-	
-	def SetObjForAxisMove(self, context):
-		bpy.ops.object.select_all(action='DESELECT')
-		indexV = [i.index for i in self.d_obj.data.vertices]
-		indexF = [i.index for i in self.d_obj.data.polygons]
-		self.d_obj.modifiers[0].thickness = 0.0
-		act = context.active_object
-		context.scene.objects.active = self.d_obj
-		context.active_object.select = True
-		bpy.ops.object.convert(target='MESH')
-		for i in indexF:
-			self.d_obj.data.polygons[i].select = True
-		bpy.ops.object.mode_set(mode='EDIT')
-		bpy.ops.mesh.select_more()
-		bpy.ops.mesh.select_all(action='INVERT')
-		bpy.ops.object.mode_set(mode='OBJECT')
-		coord = [i.center.copy() for i in self.d_obj.data.polygons if i.select]
-		# bpy.ops.object.select_all(action='DESELECT')
-		# context.active_object.select = True
-		# bpy.ops.object.convert(target='MESH')
-		# bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-		context.scene.objects.active = act
-		
-		self.index_for_axis = []
-		for i in self.d_obj.data.vertices:
-			if i.index not in indexV:
-			#if i.select:
-				self.index_for_axis.append(i.index)
-				#i.select = True
-	
-	def Move(self, context, point, axis):
-		
-		len_vert = len(self.index_for_axis)
-		center = Vector((0.0, 0.0, 0.0))
-		
-		for i in self.index_for_axis:
-			center = self.d_obj.data.vertices[i].co.copy() + center
-		for j,n in enumerate(axis[:]):
-			if n:
-				for i in self.index_for_axis:
-					pos = (self.d_obj.data.vertices[i].co.copy()-center/len_vert) + point
-					self.d_obj.data.vertices[i].co[j] = pos[j]
+        if C == "LX" or C == "GX":
+            if C == "LX":
+                self.Current = self.GX
+            else:
+                self.Current = self.LX
+    #--------------------------------------------#
+        if C == "LY" or C == "GY":
+            if C == "LY":
+                self.Current = self.GY
+            else:
+                self.Current = self.LY
+    #--------------------------------------------#
+        if C == "LZ" or C == "GZ":
+            if C == "LZ":
+                self.Current = self.GZ
+            else:
+                self.Current = self.LZ
 
 
 
 
-class Util:
-	def __init__(self, context, event, obj, modifer, auto_merge, center, dir):
-		self.center = center
-		self.direction = dir
-		self.starMousePosPoint, self.starMousePosValuem = self.__StarPosMouse(context, event)
-		self.lasetPosMouse = None
-		self.starMousePosForAxis = False
-		self.modifier = modifer
-		self.auto_snap = bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge
-		bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge = auto_merge
-		self.show_wire = obj.show_wire
-		self.show_all_edges = obj.show_all_edges
-		obj.show_wire = True
-		obj.show_all_edges = True
-	
-	def __StarPosMouse(self, context, event):
-		region = bpy.context.region
-		rv3d = bpy.context.region_data
-		coord = event.mouse_region_x, event.mouse_region_y
-		view_vector_mouse = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-		ray_origin_mouse = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
-		
-		pointLoc = intersect_line_plane(ray_origin_mouse, ray_origin_mouse + view_vector_mouse,
-		                                self.center, rv3d.view_rotation * Vector((0.0, 0.0, -1.0)), False)
-		
-		return pointLoc, (self.direction * pointLoc) * -1
-	
-	def EventMouseNormal(self, context, event):
-		region = bpy.context.region
-		rv3d = bpy.context.region_data
-		coord = event.mouse_region_x, event.mouse_region_y
-		view_vector_mouse = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-		ray_origin_mouse = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
-		
-		pointLoc = intersect_line_plane(ray_origin_mouse, ray_origin_mouse + view_vector_mouse,
-		                                self.center, rv3d.view_rotation * Vector((0.0, 0.0, -1.0)), False)
-		pointLoc = pointLoc
-		self.lasetPosMouse = pointLoc
-		context.scene.cursor_location= pointLoc
-		return pointLoc, (self.direction * pointLoc) * -1
 
-	def Finish(self, context, m_obj, d_obj,wire,all_edge, mode, u_modifier):
-		bpy.ops.object.select_all(action='DESELECT')
-		
-		bpy.ops.object.modifier_apply(modifier=m_obj.modifiers[-1].name)
-		context.scene.objects.active = d_obj.d_obj
-		
-		d_obj.SwapCoordinate(context, d_obj.n_offset)
-		
-		
-		if not mode:
-			index = [i.index for i in d_obj.d_obj.data.polygons]
-			bpy.ops.object.modifier_apply(modifier=d_obj.d_obj.modifiers[-1].name)
-			context.active_object.select = True
-			bpy.ops.object.convert(target='MESH')
-			for i in index:
-				d_obj.d_obj.data.polygons[i].select= True
-			bpy.ops.object.mode_set(mode='EDIT')
-			bpy.ops.mesh.select_more()
-			bpy.ops.mesh.select_all(action='INVERT')
-			bpy.ops.object.mode_set(mode='OBJECT')
-			coord = [i.center.copy() for i in d_obj.d_obj.data.polygons if i.select]
-		else:
-			coord = [i.center.copy() for i in d_obj.d_obj.data.polygons if i.select]
-		for i in m_obj.data.polygons:
-			if i.center in coord:
-				i.select = True
-		m_obj.show_wire =  wire
-		m_obj.show_all_edges = all_edge
-		
-		for i in m_obj.modifiers:
-			if i in u_modifier:
-				i.show_viewport = True
-		bpy.data.objects.remove(d_obj.d_obj)
-		context.scene.objects.active = m_obj
-		bpy.ops.object.mode_set(mode='EDIT')
-		
-	def Cancel(self, context, m_obj, d_obj, wire, all_edge, mode, u_modifier):
-		
-		m_obj.modifiers.remove(m_obj.modifiers[-1])
-		bpy.data.objects.remove(d_obj.d_obj)
-		#bpy.context.scene.objects.unlink(d_obj.d_obj)
-		m_obj.show_wire = wire
-		m_obj.show_all_edges = all_edge
-		
-		for i in m_obj.modifiers:
-			if i in u_modifier:
-				i.show_viewport = True
-				
+class MainObjectDriver():
+    def __init__(self, obj, ext_obj):
+        self.obj = obj
+        self.Modifier = self.GetModifiers()
+        self.DisableModifiers()
+        self.BooleanModifier = self.CreateBooleanModifier(self.obj, ext_obj)
 
-		context.scene.objects.active = m_obj
-		bpy.ops.object.mode_set(mode='EDIT')
-		
-		
-class DestructiveExtrude(bpy.types.Operator):
-	bl_idname = "mesh.destructive_extrude"
-	bl_label = "Destructive Extrude"
-	bl_options = {"REGISTER", "UNDO", "GRAB_CURSOR", "BLOCKING"}
-	
-	@classmethod
-	def poll(cls, context):
-		return (context.mode == "EDIT_MESH")
-	
-	def modal(self, context, event):
-		if event.type == 'LEFTMOUSE':
-			self.v3d.Finish(context,self.m_obj.m_Obj,self.d_obj,self.m_obj.show_wire, self.m_obj.show_all_edges,self.axis_mode, self.m_obj.u_modifier)
-			return {'FINISHED'}
-		if event.type == 'RIGHTMOUSE':
-			self.v3d.Cancel(context,self.m_obj.m_Obj,self.d_obj,self.m_obj.show_wire, self.m_obj.show_all_edges,self.axis_mode, self.m_obj.u_modifier)
-			return {'CANCELLED'}
-		# if event.type == 'MOUSEMOVE':
-		# 	if self.axis_mode:
-		# 		point, value = self.v3d.EventMouseNormal(context, event)
-		# 		self.d_obj.Move(context, value, self.axis.normalized())
-		# 		pass
-		# 	else:
-		# 		point, value = self.v3d.EventMouseNormal(context, event)
-		# 		self.d_obj.SwapCoordinate(context, self.m_obj.w_offset)
-		# 		self.d_obj.d_obj.modifiers[0].thickness = (value - self.v3d.starMousePos)#.length
-		# print ('value', value)
-		
-		####___________________FIX___AFTER___________________________###
-		# print('test', context.active_object.matrix_world.to_3x3() * value.normalized())
-		# if self.value[1] > (context.active_object.matrix_world.to_3x3() * value.normalized())[1]:
-		# 	if self.m_obj.m_Obj.modifiers[-1].operation != 'DIFFERENCE':
-		# 		self.m_obj.m_Obj.modifiers[-1].operation = 'DIFFERENCE'
-		# 		self.m_obj.SwapCoordinate(self, context, self.m_obj.w_offset)
-		# 	self.d_obj.d_obj.modifiers[0].thickness = (value - self.v3d.starMousePos).length
-		# else:
-		# 	if self.m_obj.m_Obj.modifiers[-1].operation == 'DIFFERENCE':
-		# 		self.m_obj.m_Obj.modifiers[-1].operation = 'UNION'
-		# 		self.m_obj.SwapCoordinate(self, context, self.m_obj.n_offset)
-		# 	self.d_obj.d_obj.modifiers[0].thickness = -1 * (value - self.v3d.starMousePos).length
-		####_________________________________________________________###
-		
-		if event.type == 'X' and self.axis != Vector((1.0, 0.0, 0.0)):
-			self.axis_mode = True
-			self.axis = Vector((1.0, 0.0, 0.0))
-			if len(self.d_obj.d_obj.modifiers): self.d_obj.SetObjForAxisMove(context)
-		if event.type == 'Y' and self.axis != Vector((0.0, 1.0, 0.0)):
-			self.axis = Vector((0.0, 1.0, 0.0))
-			self.axis_mode = True
-			if len(self.d_obj.d_obj.modifiers): self.d_obj.SetObjForAxisMove(context)
-		if event.type == 'Z' and self.axis != Vector((0.0, 0.0, 1.0)):
-			self.axis = Vector((0.0, 0.0, 1.0))
-			self.axis_mode = True
-			if len(self.d_obj.d_obj.modifiers): self.d_obj.SetObjForAxisMove(context)
-		
-		if event.ctrl:
-			if self.axis_mode:
-				RayCast(self, context, event, ray_max=1000.0)
-				self.d_obj.Move(context, context.scene.cursor_location, self.axis.normalized())
-			else:
-				RayCast(self, context, event, ray_max=1000.0)
-				distnace = float("inf")
-				index = 0
-				for i in self.d_obj.d_obj.data.vertices:
-					tamp = (self.d_obj.d_obj.matrix_world * i.co.copy() - context.scene.cursor_location).length
-					if tamp < distnace:
-						distnace = tamp
-						index = i.index
-				v2 = self.d_obj.d_obj.matrix_local.inverted() * context.scene.cursor_location.copy()
-				v1 = self.d_obj.d_obj.data.vertices[index].co.copy()
-				dvec = v2 - v1
-				dnormal = np.dot(dvec, self.v3d.direction)
-				v2 = v1 + Vector(dnormal * self.v3d.direction)
-				value = (v1 - v2).length
-				self.d_obj.d_obj.modifiers[0].thickness = value
-				
-		elif event.type == 'MOUSEMOVE':
-			if self.axis_mode:
-				point, value = self.v3d.EventMouseNormal(context, event)
-				self.d_obj.Move(context, point, self.axis.normalized())
-			
-			else:
-				point, value = self.v3d.EventMouseNormal(context, event)
-				value = (value - self.v3d.starMousePosValuem)
-				if self.m_obj.m_Obj.modifiers[-1].operation == 'DIFFERENCE' and value < 0:
-					self.m_obj.m_Obj.modifiers[-1].operation = 'UNION'
-					self.d_obj.SwapCoordinate(context, self.d_obj.n_offset)
-				elif self.m_obj.m_Obj.modifiers[-1].operation == 'UNION' and value > 0:
-					self.m_obj.m_Obj.modifiers[-1].operation = 'DIFFERENCE'
-					self.d_obj.SwapCoordinate(context, self.d_obj.w_offset)
-				self.d_obj.d_obj.modifiers[0].thickness = value
 
-		if event.type == 'ESC':
-			return {'CANCELLED'}
-		return {'RUNNING_MODAL'}
-	
-	def invoke(self, context, event):
-		if context.space_data.type == 'VIEW_3D':
-			auto_merge = bpy.data.scenes['Scene'].tool_settings.use_mesh_automerge = False
-			self.m_obj = M_Object(context)
-			self.d_obj = D_Object(context, self.m_obj.n_offset, self.m_obj.w_offset)
-			self.v3d = Util(context, event, self.d_obj.d_obj, self.m_obj.u_modifier, auto_merge,
-			                self.m_obj.center_selection, self.m_obj.direction)
-			self.enter = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '+', '*', '/', '.', ',']
-			#self.value = context.active_object.matrix_world.to_3x3() * self.v3d.EventMouseNormal(context,event).normalized()
-			self.axis_mode = False
-			self.axis = Vector((0.0, 0.0, 0.0))
-			context.window_manager.modal_handler_add(self)
-			return {'RUNNING_MODAL'}
-		else:
-			self.report({'WARNING'}, "is't 3dview")
-			return {'CANCELLED'}
+    def GetModifiers(self):
+        """Получаем рабочие модификаторы"""
+        EnableModifiers = [] # str
+        for i in self.obj.modifiers:
+            if i.show_viewport:
+                EnableModifiers.append(i.name)
+        return EnableModifiers
 
+    def DisableModifiers(self):
+        for i in self.Modifier:
+            self.obj.modifiers[i].show_viewport = False
+    
+    def EnableModifiers(self):
+        for i in self.Modifier:
+            self.obj.modifiers[i].show_viewport = True
+    
+    def CreateBooleanModifier(self, obj, ext_obj):
+            #________Set Boolean________#
+        bpy.context.view_layer.objects.active = obj
+        BooleanModifier = bpy.context.object.modifiers.new('DestructiveBoolean', 'BOOLEAN')
+        bpy.context.object.modifiers["DestructiveBoolean"].operation = 'DIFFERENCE'
+        bpy.context.object.modifiers["DestructiveBoolean"].object = ext_obj
+        bpy.context.object.modifiers["DestructiveBoolean"].show_viewport = True
+        return BooleanModifier
+
+class SceneDriver():
+    def __init__(self):
+        self.ShowAllEdges = bpy.context.active_object.show_all_edges
+        self.ShowWire = bpy.context.active_object.show_wire
+        self.Origyn = bpy.context.tool_settings.transform_pivot_point
+        self.CursorPosition = self.GetCursorPosition()
+        self.KD = self.CreateKD_Tree()
+        
+
+
+
+    def SetVisualMeshSetings(self):
+        bpy.context.active_object.show_all_edges = self.ShowAllEdges
+        bpy.context.active_object.show_wire = self.ShowWire
+
+    def GetCursorPosition(self):
+        return bpy.context.scene.cursor.location
+
+    def SetCursorPosition(self,context, is_Set = False):
+        bpy.context.scene.cursor.location = self.CursorLocation
+
+    def Cansel(self, ext_obj, main_obj):
+        bpy.data.objects.remove(ext_obj.obj)
+        bpy.context.view_layer.objects.active = main_obj.obj
+        bpy.ops.object.modifier_remove(modifier='DestructiveBoolean')
+        self.SetVisualMeshSetings()
+        main_obj.EnableModifiers()
+        bpy.ops.object.mode_set(mode='EDIT')
+    
+    
+
+    def Finish(self, ext_obj, main_obj, BevelUpdate=False):
+
+        bpy.context.view_layer.objects.active = main_obj.obj
+        bpy.ops.object.modifier_apply(modifier="DestructiveBoolean")
+
+        bpy.data.objects.remove(ext_obj.obj)
+        self.SetVisualMeshSetings()
+        main_obj.EnableModifiers()
+        bpy.ops.object.mode_set(mode='EDIT')
+
+    def CreateKD_Tree(self):
+        obj = bpy.context.active_object
+        point = []
+        for v in obj.data.vertices:
+            point.append(v.co)
+
+        for e in obj.data.edges:
+            point.append((obj.data.vertices[e.vertices[0]].co + obj.data.vertices[e.vertices[1]].co) / 2)
+
+        for p in obj.data.polygons:
+            point.append(p.center)
+
+        kd = kdtree.KDTree(len(point))
+
+        for i in range(len(point)):
+            kd.insert(point[i], i)
+
+        kd.balance()
+        return kd
+
+    def KD_Find_Point(self, point, center, normal):
+        co, index, dist = self.KD.find(point)
+        return (((co - center) @ normal) * -1)
+
+class MouseDriver():
+    def __init__(self, center, face_normal):
+        self.Center = center.copy()
+        self.CameraVector = bpy.context.region_data.view_rotation @ Vector(( 0.0,0.0,-1.0))
+        self.face_normal = face_normal
+        self.LastPoint = center
+
+    def GetValue(self, MousePosition, normal, clip_normal):
+        region = bpy.context.region
+        rv3d = bpy.context.region_data
+
+        view_vector_mouse = view3d_utils.region_2d_to_vector_3d(region, rv3d, MousePosition)
+        ray_origin_mouse = view3d_utils.region_2d_to_origin_3d(region, rv3d, MousePosition)
+        MouseVector =  view_vector_mouse + ray_origin_mouse
+        pointLoc = intersect_line_plane(ray_origin_mouse, MouseVector, self.Center, clip_normal)
+
+        # dvec = self.Center-pointLoc
+        # dnormal = dvec.dot(normal)
+        # val = self.Center + Vector(dnormal*normal)
+
+        return ((((pointLoc - self.Center)) @ normal) * -1)
+
+    def GetSnapSurface(self, MousePosition):
+        region = bpy.context.region
+        rv3d = bpy.context.region_data
+        view_vector_mouse = view3d_utils.region_2d_to_vector_3d(region, rv3d, MousePosition)
+        ray_origin_mouse = view3d_utils.region_2d_to_origin_3d(region, rv3d, MousePosition)
+        direction = ray_origin_mouse + (view_vector_mouse * 1000)
+        #direction.normalized()
+        result, location, normal, index, obj, matrix = bpy.context.scene.ray_cast(bpy.context.view_layer.depsgraph, ray_origin_mouse, direction)
+
+        return location
+
+class ExtrudeObject():
+    def __init__(self, MainObject):
+        self.obj = self.CreateNewObject()
+        self.TransformObject(self.obj)
+        self.ClearModifiers(self.obj)
+        self.Solidify, self.Displace = self.SetupModifier(self.obj)
+        self.obj.display_type = 'WIRE'
+        self.GeneralNormal = self.CalculateNormal(self.obj)
+        self.Center = self.GetCenter()
+        self.IsNormal = True
+
+    
+
+    def SetOffsetValue(self, value):
+        if self.IsNormal:
+            self.Solidify.thickness = value# * -1
+        else:
+            self.Displace.strength = value
+
+
+    def CreateNewObject(self):
+        # ________Duplicate Object________#
+        bpy.ops.mesh.duplicate()
+        bpy.ops.mesh.separate(type='SELECTED')
+        bpy.ops.object.mode_set(mode='OBJECT')
+        return bpy.context.selected_objects[-1] 
+    
+    def ClearModifiers(self, obj):
+    # ________Clear Modifiers________#
+        while len(obj.modifiers) != 0: 
+            obj.modifiers.remove(obj.modifiers[0])
+
+    def SetupModifier(self, obj):
+        # ________Set Solidify________#
+        #bpy.context.view_layer.objects.active = self.obj
+        self.obj.modifiers.new('DestructiveSolidify', 'SOLIDIFY')
+        self.obj.modifiers.new('DestructiveDisplace', 'DISPLACE')
+        sol = self.obj.modifiers['DestructiveSolidify']
+        dis = self.obj.modifiers['DestructiveDisplace']
+
+        self.obj.vertex_groups.new(name='Destructive')
+
+        sol.shell_vertex_group = "Destructive"
+        sol.use_even_offset = True
+        #sol.offset = 0
+
+        dis.vertex_group = "Destructive"
+        dis.direction = 'X'
+        dis.space = 'GLOBAL'
+        dis.strength = 0
+
+        return sol, dis
+
+    def GetCenter(self):
+        local_bbox_center = 0.125 * sum((Vector(b) for b in self.obj.bound_box), Vector())
+        return self.obj.matrix_world @ local_bbox_center
+
+    def TransformObject(self, ext_obj):
+        pass
+
+    def CalculateNormal(self, obj):
+        normal = Vector((0.0, 0.0, 0.0))
+        for i in obj.data.polygons:
+            normal += i.normal.copy()
+        #print('notmal ', normal)
+        return normal
+
+    def SetAxis(self, axis):
+        self.Displace.direction = axis
+
+    def SwitchTohAxis(self, axis, mode):
+        # print('ax', axis)
+        # print('mode', mode.Current[2])
+        if axis in mode.Current[2]:
+            # print('local')
+            mode.SwapLocalGloval()
+        else:
+            if axis == "X":
+                mode.Current = mode.GX
+            elif axis == "Z":
+                mode.Current = mode.GY
+            elif axis == "Z":
+                mode.Current = mode.GZ
+        self.Solidify.thickness = 0.0
+        self.Displace.direction = axis
+        self.IsNormal = False
+        if "L" in mode.Current[2]:
+            self.Displace.space = 'LOCAL'
+        else:
+            self.Displace.space = 'GLOBAL'
+            
+
+    def SwitchToNormal(self):
+        self.IsNormal = True
+        self.Displace.strength = 0
+
+def Convert(a):
+    if a =='ZERO' or a == 'NUMPAD_0':
+       return '0'
+    if a =='ONE' or a == 'NUMPAD_1':
+       return '1'
+    if a =='TWO' or a == 'NUMPAD_2':
+       return '2'
+    if a =='THREE' or a == 'NUMPAD_3':
+       return '3'
+    if a =='FOUR' or a == 'NUMPAD_4':
+       return '4'
+    if a =='FIVE' or a == 'NUMPAD_5':
+       return '5'
+    if a =='SIX' or a == 'NUMPAD_6':
+       return '6'
+    if a =='SEVEN' or a == 'NUMPAD_7':
+       return '7'
+    if a =='EIGHT' or a == 'NUMPAD_8':
+       return '8'
+    if a =='NINE' or a == 'NUMPAD_9':
+        print('9')
+        return '9'
+    if a =='MINUS' or a == 'NUMPAD_MINUS':
+        return '-'
+    if a =='PLUS' or a == 'NUMPAD_PLUS':
+        return '+'
+    if a =='SLASH' or a == 'NUMPAD_SLASH':
+        return '/'
+    if a =='NUMPAD_ASTERIX':
+        return '*'
+
+def ManualInput(self, context, event):
+    if (event.type == 'BACK_SPACE' and len(self.expression) != 0) and event.value == 'PRESS':
+        if len(self.expression) != 0:
+            self.expression = self.expression[:-1]
+            if len(self.expression) != 0:
+                try:
+                    self.offset = eval(self.expression)
+                    self.ExtObject.SetOffsetValue(self.offset*-1)
+                except:
+                    pass
+                context.area.header_text_set('Offset-' + str(self.expression) + '=' + str(self.offset)  + ' ' + 'Press X, Y, Z To Axis Constrain. Double Press For Contrain To local Axis')
+                return {'RUNNING_MODAL'}
+
+    if event.type in self.event and event.value == 'PRESS':
+        if event.type in ['MINUS','PLUS','SLASH','NUMPAD_ASTERIX', 'NUMPAD_SLASH', 'NUMPAD_MINUS', 'NUMPAD_PLUS']:
+            if len(self.expression) != 0:
+                if not self.expression[-1] in ['+','-','*','/']:
+                    self.expression = self.expression + Convert(event.type)
+        else:
+            self.expression = self.expression + Convert(event.type)
+            try:
+                self.offset = eval(self.expression)
+                self.ExtObject.SetOffsetValue(self.offset*-1)
+            except:
+                pass
+        context.area.header_text_set('Offset-' + str(self.expression) + '=' + str(self.offset)  + ' ' + 'Press X, Y, Z To Axis Constrain. Double Press For Contrain To local Axis')
+        return {'RUNNING_MODAL'}
+    else:
+        return None
+
+    
+
+
+class DestuctiveExtrude(bpy.types.Operator):
+    bl_idname = "mesh.destuctive_extrude"
+    bl_label = "Destructive Extrude"
+    bl_options = {"REGISTER", "UNDO", "GRAB_CURSOR", "BLOCKING"}
+
+    @classmethod
+    def poll(cls, context):
+        return (context.mode == "EDIT_MESH")
+
+    def modal(self, context, event):
+        if event.type == 'LEFTMOUSE':
+            self.Scene.Finish(self.ExtObject, self.MainObject)
+            context.area.header_text_set(None)
+            return {'FINISHED'}
+
+        if event.type in {'RIGHTMOUSE', 'ESC'}:
+            self.Scene.Cansel(self.ExtObject, self.MainObject)
+            context.area.header_text_set(None)
+            return {'CANCELLED'}
+
+        if (event.type in self.event or event.type == 'BACK_SPACE') and event.value == 'PRESS':
+            value = ManualInput(self, context, event)
+            if not value is None:
+                return value
+
+        if len(self.expression) != 0:
+            if self.expression.find('+') != -1 or self.expression.find('-') != -1 or self.expression.find('*') != -1 or self.expression.find('/') != -1:
+                context.area.header_text_set('Offset-' + str(self.expression) + '=' + str(self.offset)  + ' ' + 'Press X, Y, Z To Axis Constrain. Double Press For Contrain To local Axis')
+            else:
+                context.area.header_text_set('Offset-' + str(self.expression) + ' ' + 'Press X, Y, Z To Axis Constrain. Double Press For Contrain To local Axis')
+            return {'RUNNING_MODAL'}
+
+        context.area.header_text_set('Offset-' + str(self.offset) + ' ' + 'Press X, Y, Z To Axis Constrain. Double Press For Contrain To local Axis')
+        if event.ctrl:
+            MousePosition = Vector((event.mouse_x - context.area.regions.data.x, event.mouse_y - context.area.regions.data.y))
+            point = self.Mouse.GetSnapSurface(MousePosition)
+            self.offset = self.Scene.KD_Find_Point(point, self.ExtObject.Center, self.Mode.Current[0])
+            self.ExtObject.SetOffsetValue(self.offset)
+            return {'RUNNING_MODAL'}
+
+        if event.type == 'MOUSEMOVE':
+            MousePosition = Vector((event.mouse_x - context.area.regions.data.x, event.mouse_y - context.area.regions.data.y))
+            self.offset = self.Mouse.GetValue(MousePosition, self.Mode.Current[0], self.Mode.Current[1])
+            self.ExtObject.SetOffsetValue(self.offset)
+
+        if event.type in ['X', 'Y', 'Z'] and event.value == 'PRESS':
+            self.ExtObject.SwitchTohAxis(event.type, self.Mode)
+
+        if event.type == 'N' and event.value == 'PRESS':
+            self.ExtObject.SwitchToNormal()
+            self.Mode.Current = self.Mode.Normal
+
+        return {'RUNNING_MODAL'}
+
+
+    def invoke(self, context, event):
+        if context.space_data.type == 'VIEW_3D':
+            self.offset = 0.0
+            obj = context.active_object
+            self.ExtObject = ExtrudeObject(obj)
+            self.MainObject = MainObjectDriver(obj, self.ExtObject.obj)
+            self.Scene = SceneDriver()
+            self.Mouse = MouseDriver(self.ExtObject.Center, self.ExtObject.GeneralNormal)
+            self.Mode = State(self.MainObject.obj.matrix_world, self.ExtObject.GeneralNormal)
+
+            self.event = ['ZERO','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE',
+            'MINUS','PLUS','SLASH','NUMPAD_ASTERIX', 'NUMPAD_SLASH', 'NUMPAD_MINUS', 'NUMPAD_PLUS', 
+            'NUMPAD_1', 'NUMPAD_2', 'NUMPAD_3','NUMPAD_4', 'NUMPAD_5', 'NUMPAD_6', 'NUMPAD_7', 'NUMPAD_8', 'NUMPAD_9', 'NUMPAD_0' ]
+            self.expression = ''
+
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+        else:
+            self.report({'WARNING'}, "is not 3dview")
+            return {'CANCELLED'}
+
+    
+
+classes = (DestuctiveExtrude)
 
 def operator_draw(self, context):
 	layout = self.layout
 	col = layout.column(align=True)
 	self.layout.operator_context = 'INVOKE_REGION_WIN'
-	col.operator("mesh.destructive_extrude", text="Destructive Extrude")
-
+	col.operator("mesh.destuctive_extrude", text="Destructive Extrude")
 
 def register():
-	bpy.utils.register_class(DestructiveExtrude)
-	bpy.types.VIEW3D_MT_edit_mesh_extrude.append(operator_draw)
-
+    bpy.utils.register_class(classes)
+    bpy.types.VIEW3D_MT_edit_mesh_extrude.append(operator_draw)
 
 def unregister():
-	bpy.utils.unregister_class(DestructiveExtrude)
-	bpy.types.VIEW3D_MT_edit_mesh_extrude.remove(operator_draw)
-
+    bpy.utils.unregister_class(classes)
+    bpy.types.VIEW3D_MT_edit_mesh_extrude.remove(operator_draw)
 
 if __name__ == "__main__":
-	register()
-
+    register()
